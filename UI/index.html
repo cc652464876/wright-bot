@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <script>
+        // 简单的性能监控
+        window.perfStart = performance.now();
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log(`[DOM] ${(performance.now() - window.perfStart).toFixed(0)}ms`);
+        });
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PrismPDF 智能采集控制台</title>
+
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script type="module" src="prism-ui-bundle.js?v=999"></script>
+
+</head>
+
+<body>
+
+    <sp-theme color="dark" scale="medium">
+        <div class="app-container">
+
+            <div class="settings-grid" style="margin-top: 32px;">
+                <div class="label-fixed">保存路径</div>
+                <sp-textfield id="input-save-path" placeholder="C:/Downloads/PDFs"
+                    value="D:/Downloads/PDF_Data"></sp-textfield>
+
+                <div id="btn-select-path" class="square-btn folder-btn" title="选择文件夹" style="position: relative;">
+                    <div
+                        style="position: absolute; bottom: 100%; right: 0; margin-bottom: 16px; font-size: 14px; color: #444; font-family: Consolas, 'Courier New', monospace; white-space: nowrap; pointer-events: none; cursor: default;">
+                        <i class="fa-solid fa-code"></i> PrismPDF_V1.0_by：風林火山&Gemini
+                    </div>
+                    <sp-icon-folder-open></sp-icon-folder-open>
+                </div>
+
+                <div class="label-fixed">历史采集</div>
+                <sp-textfield id="input-history-path" placeholder="导入历史记录文件..."></sp-textfield>
+
+                <div id="btn-import-history" class="square-btn folder-btn" title="导入历史">
+                    <sp-icon-folder-open></sp-icon-folder-open>
+                </div>
+
+                <div class="label-fixed">实时审计</div>
+                <div style="grid-column: 2 / -1; display: flex; align-items: center;">
+                    <sp-checkbox id="cb-realtime-jsonl-export" style="margin: 0;"
+                        title="开启后各域名目录下实时追加 scanned_urls.jsonl、scan_errors_log.txt、interactions.jsonl（与 DB 双写；交互为 .jsonl 行格式，非旧版 interactions.json）">
+                        实时写入 JSONL 审计文件（供 tail / 旧 UI）
+                    </sp-checkbox>
+                </div>
+            </div>
+
+            <sp-divider size="s" style="margin: 8px 0; width: 100%; flex-shrink: 0;"></sp-divider>
+
+            <div class="config-section">
+
+                <div class="config-row">
+                    <div class="label-fixed">最大并发</div>
+                    <sp-picker id="max-concurrency" style="flex: 1;">
+                        <sp-menu-item value="auto" selected>Auto _ 智能自适应</sp-menu-item>
+                        <sp-menu-item value="1">01 并发 _ 适合高防网站</sp-menu-item>
+                        <sp-menu-item value="2">02 并发</sp-menu-item>
+                        <sp-menu-item value="4">04 并发 _ 适合普通网站</sp-menu-item>
+                        <sp-menu-item value="8">08 并发</sp-menu-item>
+                        <sp-menu-item value="16">16 并发 _ 仅限低防网站</sp-menu-item>
+                        <sp-menu-item value="32">32 并发</sp-menu-item>
+                    </sp-picker>
+
+                    <div class="label-fixed label-middle">设备伪装</div>
+                    <sp-picker id="stealth-engine" style="flex: 2;" title="仅 Playwright 模式有效；选择浏览器启动后端（stealth_engine）">
+                        <sp-menu-item value="chromium" selected>Chromium 标准后端 — 默认，稳定通用</sp-menu-item>
+                        <sp-menu-item value="rebrowser">Rebrowser 强化 Chromium — CDP 补丁，削弱自动化特征</sp-menu-item>
+                        <sp-menu-item value="camoufox">Camoufox（实验性/开发中）— 补丁 Firefox，主路径未完全接入</sp-menu-item>
+                    </sp-picker>
+                </div>
+
+                <div class="config-row">
+                    <div class="label-fixed">采集策略</div>
+                    <sp-picker id="strategy-select" style="flex: 1;" value="full">
+                        <sp-menu-item value="full" selected>全站历遍</sp-menu-item>
+                        <sp-menu-item value="sitemap">地图采集</sp-menu-item>
+                        <sp-menu-item value="google">Google搜索</sp-menu-item>
+                        <sp-menu-item value="bing">Bing搜索</sp-menu-item>
+                        <sp-menu-item value="duckduckgo">DuckDuckGo搜索</sp-menu-item>
+                    </sp-picker>
+
+                    <div class="label-fixed label-middle">爬虫引擎</div>
+                    <sp-picker id="engine-select" style="flex: 2;">
+                        <sp-menu-item value="playwright" selected>playwright — 动态渲染（可执行 JS）</sp-menu-item>
+                        <sp-menu-item value="beautifulsoup">beautifulsoup — 静态 HTML 极速解析</sp-menu-item>
+                    </sp-picker>
+                </div>
+
+                <div class="action-header">
+                    <div class="label-fixed" style="text-align: left; width: auto; color: #31a8ff;">目标域名 / URL</div>
+                    <div class="action-controls">
+                        <sp-checkbox id="cb-save-excel" checked style="margin: 0;">保存 Excel</sp-checkbox>
+                        <sp-checkbox id="cb-save-log" checked style="margin: 0;">保存日志</sp-checkbox>
+
+                        <sp-checkbox id="cb-headless" checked style="margin: 0;">无头模式</sp-checkbox>
+                        <sp-checkbox id="cb-stealth" checked style="margin: 0;">反爬隐身</sp-checkbox>
+
+                        <sp-checkbox id="cb-ignore-ssl" checked style="margin: 0;">忽略SSL</sp-checkbox>
+                        <sp-checkbox id="cb-limit-rate" style="margin: 0;">限制频率</sp-checkbox>
+
+                        <div style="width: 1px; height: 16px; background: #444; margin: 0 5px;"></div>
+                        <sp-button id="btn-show-log" variant="secondary" style="min-width: 80px;">Log</sp-button>
+                        <sp-button id="btn-show-canary" variant="secondary" style="min-width: 80px;"
+                            title="金丝雀防封杀体检看板">Canary</sp-button>
+                        <sp-button id="btn-show-link" variant="cta" style="min-width: 80px;">Link</sp-button>
+                    </div>
+                </div>
+
+                <div class="dynamic-view-container">
+
+                    <div id="view-full">
+                        <div class="input-row">
+                            <sp-textfield placeholder="请输入目标网址..." style="flex-grow: 1;"></sp-textfield>
+                            <div class="square-btn trash-btn" onclick="this.parentElement.remove()">
+                                <sp-icon-delete></sp-icon-delete>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="view-sitemap" class="hidden">
+                        <div class="input-row">
+                            <sp-textfield id="input-sitemap" placeholder="请输入目标网址..."
+                                style="flex-grow: 1;"></sp-textfield>
+                            <button id="btn-smart-search" class="smart-btn">智能检索</button>
+                            <div class="square-btn trash-btn" onclick="this.parentElement.remove()">
+                                <sp-icon-delete></sp-icon-delete>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="view-search" class="hidden">
+                        <div class="input-row">
+                            <div class="label-fixed"
+                                style="width: 70px; min-width: 70px; text-align: right; white-space: nowrap;">API Key
+                            </div>
+                            <sp-textfield id="input-api-key" placeholder="请输入API Key (可选)"
+                                style="flex-grow: 1;"></sp-textfield>
+                        </div>
+                        <div class="input-row">
+                            <div class="label-fixed"
+                                style="width: 70px; min-width: 70px; text-align: right; white-space: nowrap;">关键词</div>
+                            <sp-textfield id="input-search-keyword" placeholder="请输入搜索关键词..."
+                                style="flex-grow: 1;"></sp-textfield>
+                        </div>
+
+                        <sp-divider size="s" style="margin: 8px 0; width: 100%; flex-shrink: 0;"></sp-divider>
+
+                        <div class="input-row">
+                            <sp-textfield placeholder="请输入目标网址..." style="flex-grow: 1;"></sp-textfield>
+                            <div class="square-btn trash-btn" onclick="this.parentElement.remove()">
+                                <sp-icon-delete></sp-icon-delete>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <sp-divider size="s" style="margin: 8px 0; width: 100%; flex-shrink: 0;"></sp-divider>
+
+            <div style="display: flex; flex-direction: column; gap: 8px; flex-grow: 1;">
+
+                <sp-action-group id="file-type-selector" selects="single" compact emphasized justified
+                    style="margin-bottom: 0; width: 100%;">
+                    <sp-action-button value="pdf" selected>PDF</sp-action-button>
+                    <sp-action-button value="img">IMG</sp-action-button>
+                    <sp-action-button value="all">ALL</sp-action-button>
+                </sp-action-group>
+
+                <div class="filter-section" style="margin-bottom: 10px;">
+                    <div class="param-box-dual">
+                        <div class="param-inner border-file">
+                            <span class="p-tag hl-file">文件大于</span>
+                            <sp-slider id="s-file" value="1" min="0" max="10" step="0.1" class="slider-fill"
+                                variant="filled" label-visibility="none"></sp-slider>
+                            <sp-textfield id="i-file" type="number" value="1" class="input-sm"></sp-textfield>
+                            <span class="unit-label">MB</span>
+                        </div>
+
+                        <div class="param-inner border-page">
+                            <span class="p-tag hl-page">页数大于</span>
+                            <sp-slider id="s-page" value="3" min="1" max="10" class="slider-fill" variant="filled"
+                                label-visibility="none"></sp-slider>
+                            <sp-textfield id="i-page" type="number" value="3" class="input-sm"></sp-textfield>
+                            <span class="unit-label">页</span>
+                        </div>
+                    </div>
+
+                    <div class="param-box-dual">
+                        <div class="param-inner border-img">
+                            <span class="p-tag hl-img">图片大于</span>
+                            <sp-slider id="s-img" value="2" min="0.1" max="10" step="0.1" class="slider-fill"
+                                variant="filled" label-visibility="none"></sp-slider>
+                            <sp-textfield id="i-img" type="number" value="2" class="input-sm"></sp-textfield>
+                            <span class="unit-label">MB</span>
+                        </div>
+
+                        <div class="param-inner border-px">
+                            <span class="p-tag hl-px">像素大于</span>
+                            <sp-slider id="s-px" value="1000" min="100" max="2000" step="100" class="slider-fill"
+                                variant="filled" label-visibility="none"></sp-slider>
+                            <sp-textfield id="i-px" type="number" value="1000" class="input-sm"></sp-textfield>
+                            <span class="unit-label">px</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="footer-actions">
+                    <sp-button id="btn-toggle-crawl" variant="cta"
+                        style="width: 250px; border-radius: 20px; font-size: 16px; transition: all 0.3s ease;">
+                        启动爬虫
+                    </sp-button>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="toast-container">
+            <sp-toast id="sys-toast" variant="negative"></sp-toast>
+        </div>
+
+    </sp-theme>
+    <script src="bridge.js"></script>
+    <script src="ui-config.js"></script>
+    <script src="ui-view.js"></script>
+    <script src="ui-status.js"></script>
+    <script src="ui-main.js"></script>
+    <script src="ui-net.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const strategySelect = document.getElementById('strategy-select');
+            const viewFull = document.getElementById('view-full');
+            const viewSitemap = document.getElementById('view-sitemap');
+            const viewSearch = document.getElementById('view-search');
+
+            const viewMap = {
+                'full': viewFull,
+                'sitemap': viewSitemap,
+                'google': viewSearch,
+                'bing': viewSearch,
+                'duckduckgo': viewSearch
+            };
+
+            strategySelect.addEventListener('change', (e) => {
+                const val = e.target.value;
+                viewFull.classList.add('hidden');
+                viewSitemap.classList.add('hidden');
+                viewSearch.classList.add('hidden');
+                if (viewMap[val]) viewMap[val].classList.remove('hidden');
+            });
+        });
+    </script>
+
+    <footer class="bottom-status-bar">
+
+        <div class="system-monitor-widget" style="justify-content: flex-start; gap: 16px;">
+
+            <div id="icon-cn-box" style="display: flex; align-items: center;">
+                <sp-icon-confidence-four class="net-blue"></sp-icon-confidence-four>
+            </div>
+
+            <div style="display: flex; align-items: center;">
+                <div id="icon-glb-box">
+                    <sp-icon-confidence-four class="net-blue"></sp-icon-confidence-four>
+                </div>
+                <span class="status-label lcd-label" style="display: none;"></span>
+            </div>
+
+            <div class="status-icon-group" title="爬虫运行状态" style="display: flex; align-items: center; gap: 6px;">
+                <sp-icon-bug id="status-bug" size="s" class="bug-running bug-green"></sp-icon-bug>
+                <span class="status-text" id="heartbeat-text" style="color: #444;">系统就绪</span>
+            </div>
+
+        </div>
+
+        <div style="flex: 1;"></div>
+
+        <div class="system-monitor-widget" style="justify-content: flex-end; gap: 12px;">
+
+            <sp-theme theme="spectrum" color="dark" scale="medium" style="background: transparent;">
+                <div class="status-bar-item" style="display: flex; align-items: center; gap: 8px;">
+                    <sp-picker id="proxy-picker" value="A" quiet size="m">
+                        <sp-menu-item value="A">自动</sp-menu-item>
+                        <sp-menu-item value="B">直连</sp-menu-item>
+                        <sp-menu-item value="C">代理</sp-menu-item>
+                    </sp-picker>
+
+                    <div id="proxy-input-group">
+                        <sp-textfield id="proxy-input" placeholder="端口或IP:端口" size="s"></sp-textfield>
+                        <sp-button id="confirm-btn" size="s" variant="accent" disabled>确认</sp-button>
+                        <sp-button id="cancel-btn" size="s" variant="secondary" treatment="outline">取消</sp-button>
+                    </div>
+                </div>
+            </sp-theme>
+
+            <sp-divider vertical size="s" style="height: 16px; margin: 0 4px;"></sp-divider>
+
+            <div class="network-speed-box" id="net-speed-display">
+                <span class="speed-item">
+                    <i class="fa-solid fa-arrow-up"></i>
+                    <small id="up-speed">0.0</small>
+                    <kbd id="up-unit">K</kbd> </span>
+                <span class="speed-item">
+                    <i class="fa-solid fa-arrow-down"></i>
+                    <small id="down-speed">0.0</small>
+                    <kbd id="down-unit">K</kbd> </span>
+            </div>
+
+        </div>
+    </footer>
+</body>
+
+</html>

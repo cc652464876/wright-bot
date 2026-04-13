@@ -1,0 +1,238 @@
+/* =========================================
+   style_components.css - UI 组件与控件覆写
+   ========================================= */
+
+/* =========================================
+   1. 按钮与组件颜色 (Adobe Spectrum 原生覆写)
+   ========================================= */
+
+/* 仅保留圆角，释放所有颜色控制权给 Adobe 原生组件 */
+sp-button {
+    border-radius: 20px;
+}
+
+sp-button[variant="secondary"] { 
+    border-color: #666; 
+    color: #ddd; 
+}
+
+/* Spectrum 控件通用微调 */
+sp-textfield, sp-picker, sp-action-group { 
+    width: 100%; 
+}
+
+sp-textfield, sp-picker {
+    --spectrum-textfield-border-radius: 4px;
+    --spectrum-picker-border-radius: 4px;
+    --spectrum-textfield-background-color-default: #2a2a2a;
+    --spectrum-picker-background-color-default: #2a2a2a;
+    --spectrum-textfield-border-color-default: var(--border-color);
+    --spectrum-picker-border-color-default: var(--border-color);
+}
+
+sp-checkbox { 
+    --spectrum-checkbox-text-color-default: #ccc; 
+    margin-right: 0 !important; 
+}
+
+sp-slider {
+    flex-grow: 1; 
+    width: auto;
+    --spectrum-slider-track-height: 2px;
+    --spectrum-slider-handle-size: 14px;
+    --spectrum-slider-handle-margin-top: -6px;
+}
+
+/* 强制覆盖 Spectrum 组件的默认宽度，确保进度条撑满 */
+sp-progress-bar {
+    width: 100%;
+    max-width: none !important;
+}
+
+/* =========================================
+   2. 通用标签与文本组件
+   ========================================= */
+
+/* 顶部标签 */
+.label-fixed {
+    width: 65px;
+    text-align: left;
+    color: #b3b3b3;
+    font-size: 14px; 
+    font-weight: 700; 
+    flex-shrink: 0;
+}
+.label-middle { margin-left: 20px; }
+
+/* 参数框内部小标签与单位 */
+.p-tag { font-weight: 700; font-size: 14px; width: 50px; white-space: nowrap; }
+.input-sm { width: 55px !important; text-align: center; }
+.unit-label { width: 20px; color: #666; font-size: 12px; text-align: right; }
+
+/* 过滤器左侧彩色标识线与高亮字 */
+.border-file { border-left-color: var(--unified-blue); } .hl-file { color: var(--unified-blue); }
+.border-page { border-left-color: #2DCC70; } .hl-page { color: #2DCC70; }
+.border-img { border-left-color: #ff9a00; }  .hl-img { color: #ff9a00; }
+.border-px { border-left-color: #9B59B6; }   .hl-px { color: #9B59B6; }
+
+
+/* =========================================
+   3. 自定义按钮组件
+   ========================================= */
+
+/* 方形按钮 (文件夹 & 垃圾桶) */
+.square-btn {
+    width: 32px; height: 32px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    background: #333; color: var(--text-gray);
+    transition: all 0.2s; flex-shrink: 0;
+}
+.square-btn sp-icon-folder-open,
+.square-btn sp-icon-delete { width: 18px; height: 18px; pointer-events: none; }
+
+/* 悬停变色效果 */
+.folder-btn:hover {
+    border-color: var(--unified-blue);
+    color: var(--unified-blue);
+    background: #444;
+}
+.trash-btn:hover {
+    border-color: var(--trash-red);
+    color: var(--trash-red);
+    background: #402020;
+}
+
+/* 智能检索按钮 */
+.smart-btn {
+    height: 32px; padding: 0 15px;
+    border: 1px solid #555; border-radius: 4px;
+    background: #333; color: #ccc;
+    font-size: 13px; font-weight: 700;
+    cursor: pointer; display: flex; align-items: center; white-space: nowrap;
+}
+.smart-btn:hover { background: #444; color: #fff; }
+
+
+/* =========================================
+   4. 复杂业务组件：双列参数框
+   ========================================= */
+
+/* 外层黑底宽 */
+.param-box-dual {
+    background: #252525; 
+    border-radius: 4px; 
+    height: 40px; 
+    display: flex; 
+    align-items: center; 
+    width: 100%;
+    overflow: hidden; /* 保证最左侧彩色边框不溢出圆角 */
+}
+
+/* 内层：左右各占一半，内部横向排列 */
+.param-inner {
+    flex: 1; /* 左右平分 50% 宽度 */
+    display: flex; 
+    align-items: center; 
+    gap: 12px; 
+    height: 100%;
+    padding: 0 15px;
+    border-left: 3px solid transparent; /* 配合 border-file 等类显示颜色 */
+    min-width: 0; /* 防止内部组件把 Flex 布局撑破 */
+}
+.param-inner sp-slider {
+    flex-grow: 1;
+    width: auto;
+}
+
+
+/* =========================================
+   5. 监控窗口专用组件 (Monitor UI)
+   ========================================= */
+
+/* 顶部统计卡片容器 */
+.stats-container {
+    display: flex;
+    gap: 15px;
+    width: 100%;
+    margin-top: 10px;
+    flex-shrink: 0; 
+}
+
+/* 单个统计卡片 (黑底+彩色边框) */
+.stat-card {
+    flex: 1;
+    background: #252525;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 15px 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    border-left-width: 4px;
+    border-left-style: solid;
+    min-width: 0;
+}
+
+.stat-icon-box { font-size: 24px; }
+.stat-info { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+.stat-label { color: #888; font-size: 13px; font-weight: 600; }
+
+/* 液晶数字发光效果 */
+.stat-value {
+    font-family: 'DS-Digital', sans-serif;
+    font-size: 36px;
+    color: #0f0; 
+    text-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
+    line-height: 1; 
+}
+
+/* 进度条区域 */
+.progress-row {
+    display: flex; align-items: center; width: 100%;
+    margin: 15px 0; height: 40px; gap: 15px; flex-shrink: 0;
+}
+.prog-label {
+    font-size: 14px; color: #E0E0E0; font-weight: 600;
+    white-space: nowrap; width: 90px;
+}
+.prog-value {
+    font-size: 14px; color: #31a8ff; font-weight: 700;
+    font-family: 'Courier New', monospace; width: 45px; text-align: right;
+}
+
+/* 日志黑框 */
+.log-box {
+    width: 100%; height: 100%; 
+    background: #000; border: 1px solid #333; border-radius: 4px;
+    padding: 10px; color: #0f0;
+    font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.4;
+    display: block; /* 必须是 block，否则多行日志会挤在一起 */
+    
+    /* 允许文本选择和滚动 */
+    -webkit-user-select: text !important; user-select: text !important;
+    cursor: text !important; overflow-y: auto;
+}
+
+
+/* ==========================================
+   6. Toast 提示容器定位 (Adobe Spectrum)
+   ========================================== */
+
+.toast-container {
+    position: fixed;
+    bottom: 55px; /* 悬浮在底部状态栏上方 */
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    pointer-events: none; /* 让鼠标穿透容器空白处，避免遮挡下方按钮 */
+    display: flex;
+    justify-content: center;
+}
+
+/* 恢复原生 Toast 的鼠标点击事件 (让自带的关闭按钮生效) */
+.toast-container sp-toast {
+    pointer-events: auto; 
+}

@@ -1,0 +1,40 @@
+# ── UI 框架 ──────────────────────────────────────────────────────────────────
+pywebview>=4.0.0
+
+# ── 爬虫核心 ─────────────────────────────────────────────────────────────────
+# beautifulsoup extra 覆盖 BeautifulSoupCrawler 所需的 bs4 + httpx 依赖
+crawlee[playwright,beautifulsoup]>=0.3.0
+playwright>=1.40.0
+
+# ── 隐身浏览器后端（可选，按需安装）─────────────────────────────────────────
+# camoufox_backend.py：from camoufox.async_api import AsyncNewBrowser
+camoufox[geoip]>=0.4.0
+# rebrowser_backend.py：import rebrowser_patches; rebrowser_patches.patch()
+# 注意：Python 端对应包为 rebrowser-playwright（非 Node.js 的 rebrowser-patches）
+# rebrowser-playwright 是 rebrowser_backend.py 的可选依赖，未安装时自动降级
+# pip install rebrowser-playwright
+
+# ── 数据验证 & 配置 ──────────────────────────────────────────────────────────
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# ── 日志 ─────────────────────────────────────────────────────────────────────
+loguru>=0.7.0
+
+# ── 数据库（异步 SQLite）────────────────────────────────────────────────────
+aiosqlite>=0.19.0
+
+# ── 异步文件 I/O ─────────────────────────────────────────────────────────────
+# audit_center.py：aiofiles.open() 异步写 JSON 快照
+aiofiles>=23.0.0
+
+# ── 重试 ─────────────────────────────────────────────────────────────────────
+tenacity>=8.0.0
+
+# ── 系统监控 ─────────────────────────────────────────────────────────────────
+# net_monitor.py：psutil.net_io_counters() 差分计算实时网速
+psutil>=5.9.0
+
+# ── 时区工具（本机 IANA 时区名读取）────────────────────────────────────────
+# fingerprint.py：tzlocal.get_localzone()，降级到 Windows 时区名映射表
+tzlocal>=4.0

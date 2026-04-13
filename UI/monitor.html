@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PrismPDF 运行监控</title>
+
+    <link rel="stylesheet" href="style.css">
+    <script type="module" src="prism-ui-bundle.js"></script>
+
+    <style>
+        /* --- 引入本地数码管字体 --- */
+        @font-face {
+            font-family: 'DSDIGI';
+            src: url('./DS-DIGI-1.ttf') format('truetype');
+        }
+
+        /* 引入科技感等宽字体，用于英文单位等辅助文字 */
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+        /* 监控窗口专用布局调整 */
+        body {
+            overflow: hidden;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+            background-color: #121212;
+            margin: 0;
+        }
+
+        /* 强制 Web Component 自定义标签参与高度计算 */
+        sp-theme {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            /* 关键：防止高度溢出的 Flexbox 终极修复 */
+        }
+
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            /* 强制占满 sp-theme 给的所有剩余空间 */
+            gap: 20px;
+            min-height: 0;
+            /* 关键：防止内部日志过多时把容器撑爆 */
+        }
+
+        /* --- 工业仪表盘 2x2 网格样式 --- */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            flex-shrink: 0;
+        }
+
+        .digital-card {
+            background-color: #1a1c1e;
+            /* 极暗灰底色 */
+            border-radius: 10px;
+            padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+            /* 已取消左侧边框 */
+        }
+
+        .card-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 15px;
+            width: 100%;
+        }
+
+        /* 仅针对监控卡片内部的标题强制不换行，不影响全局样式 */
+        .card-top .label-fixed {
+            white-space: nowrap;
+            /* 强制单行显示 */
+            flex-shrink: 0;
+            /* 防止被右侧标签挤压 */
+        }
+
+        .card-labels {
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .card-divider {
+            height: 2px;
+            background-color: #333333;
+            margin-bottom: 16px;
+            border-radius: 1px;
+            width: 100%;
+        }
+
+        .card-bottom {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            width: 100%;
+        }
+
+        .card-unit {
+            font-family: 'DSDIGI', monospace;
+            /* 改用 DS-DIGI 字体 */
+            font-size: 20px;
+            color: #444444;
+            letter-spacing: 0px;
+            line-height: 0.8;
+            user-select: none;
+        }
+
+        .card-value {
+            /* 强制使用引入的本地数码管字体 */
+            font-family: 'DSDIGI', 'Share Tech Mono', monospace;
+            font-size: 46px;
+            color: #ffffff;
+            line-height: 0.8;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* 巨幅数值之间的连字符 */
+        .card-value .sep {
+            font-family: 'DSDIGI', monospace;
+            /* 强制连字符使用 DS-DIGI */
+            color: #444;
+            font-size: 46px;
+            position: relative;
+            top: 0px;
+            margin: 0 -4px;
+        }
+
+        /* 小标签之间的连字符 */
+        .card-labels .sep {
+            color: #555;
+            margin: 0 2px;
+        }
+
+        /* 状态颜色类 (单独给颜色使用) */
+        .text-white {
+            color: #ffffff !important;
+        }
+
+        .text-green {
+            color: #2DCC70 !important;
+        }
+
+        .text-orange {
+            color: #F29423 !important;
+        }
+
+        .text-red {
+            color: #E34850 !important;
+        }
+
+        /* 隐藏控制类 (用于初始状态不显示失败/重试数值) */
+        .hidden {
+            display: none !important;
+        }
+
+        .log-wrapper {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .log-box {
+            flex-grow: 1;
+            height: 100%;
+            overflow-y: auto;
+            font-size: 13px;
+            font-family: 'Consolas', monospace;
+            padding: 15px;
+            background-color: #0d0d0d;
+            border: 1px solid #333;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <sp-theme color="dark" scale="medium" style="height: 100%; display: block;">
+        <div class="app-container">
+
+            <div class="stats-grid">
+
+                <div class="digital-card">
+                    <div class="card-top">
+                        <div class="label-fixed">任务进度 (链接数量)</div>
+                        <div class="card-labels">
+                            <div class="text-white">总请求数</div>
+                            <div class="sep">-</div>
+                            <div class="text-white">成功请求</div>
+                            <div id="label-sep-req-fail" class="sep hidden">-</div>
+                            <div id="label-req-fail" class="text-red hidden">失败请求</div>
+                        </div>
+                    </div>
+                    <div class="card-divider"></div>
+                    <div class="card-bottom">
+                        <div class="card-unit">COUNT</div>
+                        <div class="card-value">
+                            <span id="val-req-total" class="text-white">000</span>
+                            <span class="sep">-</span>
+                            <span id="val-req-success" class="text-white">000</span>
+                            <span id="val-sep-req-fail" class="sep hidden">-</span>
+                            <span id="val-req-fail" class="text-red hidden">000</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="digital-card">
+                    <div class="card-top">
+                        <div class="label-fixed">采集数量</div>
+                        <div class="card-labels">
+                            <div class="text-green">发现文件</div>
+                            <div class="sep">-</div>
+                            <div class="text-green">已下载数</div>
+                            <div class="sep">-</div>
+                            <div class="text-orange">当前下载</div>
+                        </div>
+                    </div>
+                    <div class="card-divider"></div>
+                    <div class="card-bottom">
+                        <div class="card-unit">FILES</div>
+                        <div class="card-value">
+                            <span id="val-file-found" class="text-green">000</span>
+                            <span class="sep">-</span>
+                            <span id="val-file-downloaded" class="text-green">000</span>
+                            <span class="sep">-</span>
+                            <span id="val-file-current" class="text-orange">000</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="digital-card">
+                    <div class="card-top">
+                        <div class="label-fixed">时效分布 (秒)</div>
+                        <div class="card-labels">
+                            <div class="text-white">运行时长</div>
+                            <div class="sep">-</div>
+                            <div class="text-white">成功均时</div>
+                            <div id="label-sep-time-fail" class="sep hidden">-</div>
+                            <div id="label-time-fail" class="text-red hidden">失败均时</div>
+                        </div>
+                    </div>
+                    <div class="card-divider"></div>
+                    <div class="card-bottom">
+                        <div class="card-unit">S</div>
+                        <div class="card-value">
+                            <span id="val-time-runtime" class="text-white">00.00.00</span>
+                            <span class="sep">-</span>
+                            <span id="val-time-success-avg" class="text-white">000</span>
+                            <span id="val-sep-time-fail" class="sep hidden">-</span>
+                            <span id="val-time-fail-avg" class="text-red hidden">000</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="digital-card">
+                    <div class="card-top">
+                        <div class="label-fixed">负载状态 (链接/分钟)</div>
+                        <div class="card-labels">
+                            <div class="text-white">处理频率</div>
+                            <div id="label-sep-health-retry" class="sep hidden">-</div>
+                            <div id="label-health-retry" class="text-orange hidden">重试频率</div>
+                            <div id="label-sep-health-fail" class="sep hidden">-</div>
+                            <div id="label-health-fail" class="text-red hidden">失败频率</div>
+                        </div>
+                    </div>
+                    <div class="card-divider"></div>
+                    <div class="card-bottom">
+                        <div class="card-unit">L/MIN</div>
+                        <div class="card-value">
+                            <span id="val-health-rpm" class="text-white">000</span>
+                            <span id="val-sep-health-retry" class="sep hidden">-</span>
+                            <span id="val-health-retry" class="text-orange hidden">000</span>
+                            <span id="val-sep-health-fail" class="sep hidden">-</span>
+                            <span id="val-health-fail" class="text-red hidden">000</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="log-wrapper">
+                <div
+                    style="margin-bottom: 8px; color: #8e9092; font-size: 13px; font-weight: bold; letter-spacing: 1px;">
+                    SYSTEM LOGS //</div>
+                <div class="log-box" id="log-content">
+                    <div style="text-align: center; margin-top: 20px; color: #555;">
+                        --- 日志监听就绪 ---
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </sp-theme>
+
+    <script src="bridge.js"></script>
+    <script src="monitor.js"></script>
+
+</body>
+
+</html>

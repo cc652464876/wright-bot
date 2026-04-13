@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PrismPDF · 金丝雀体检</title>
+
+    <link rel="stylesheet" href="style.css">
+    <script type="module" src="prism-ui-bundle.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+        body {
+            overflow: hidden;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+            background-color: #121212;
+            margin: 0;
+        }
+
+        sp-theme {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            gap: 16px;
+            min-height: 0;
+        }
+
+        /* 顶栏：下拉弹性填充，按钮贴右 */
+        .control-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0;
+            width: 100%;
+            box-sizing: border-box;
+            padding: 4px 0 0;
+        }
+
+        #canary-stealth-engine {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        #btn-canary-run {
+            flex-shrink: 0;
+            min-width: 120px;
+        }
+
+        /* 单列纵向：面板满宽，与顶栏左右对齐（同属 app-container，无额外缩进） */
+        .canary-panels-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .quadrant-card {
+            background-color: #1a1c1e;
+            border-radius: 10px;
+            padding: 14px 16px;
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            box-sizing: border-box;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+            flex-shrink: 0;
+        }
+
+        .qh-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #31a8ff;
+            letter-spacing: 0.5px;
+        }
+
+        .card-divider {
+            height: 2px;
+            background-color: #333;
+            margin: 10px 0 12px;
+            border-radius: 1px;
+            width: 100%;
+            flex-shrink: 0;
+        }
+
+        .quadrant-body {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        /* 状态灯 + 单行：标题与说明同一水平行 */
+        .check-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            min-height: 22px;
+        }
+
+        .check-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .dot-pass {
+            background-color: #4caf50;
+        }
+
+        .dot-warn {
+            background-color: #ff9800;
+        }
+
+        .dot-fail {
+            background-color: #f44336;
+        }
+
+        .dot-idle {
+            background-color: #757575;
+        }
+
+        .dot-loading {
+            background-color: #2680EB;
+            animation: canary-pulse 1.2s ease-in-out infinite;
+        }
+
+        @keyframes canary-pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                box-shadow: 0 0 0 0 rgba(38, 128, 235, 0.5);
+            }
+
+            50% {
+                opacity: 0.75;
+                box-shadow: 0 0 8px 2px rgba(38, 128, 235, 0.35);
+            }
+        }
+
+        .check-main {
+            flex: 1;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .check-label {
+            font-size: 13px;
+            color: #e8e8e8;
+            font-weight: 600;
+            line-height: 1.3;
+            flex-shrink: 0;
+            max-width: 48%;
+        }
+
+        .check-desc {
+            font-size: 12px;
+            color: #8e9092;
+            line-height: 1.35;
+            font-family: 'Share Tech Mono', 'Consolas', monospace;
+            text-align: right;
+            flex: 1;
+            min-width: 0;
+            word-break: break-word;
+        }
+
+        .log-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 160px;
+            max-height: 280px;
+            flex-shrink: 0;
+        }
+
+        .log-box {
+            flex: 1;
+            overflow-y: auto;
+            font-size: 13px;
+            font-family: 'Consolas', monospace;
+            padding: 12px;
+            background-color: #0d0d0d;
+            border: 1px solid #333;
+            border-radius: 6px;
+            min-height: 120px;
+        }
+
+        .canary-log-placeholder {
+            text-align: center;
+            margin-top: 16px;
+            color: #555;
+            font-size: 13px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <sp-theme color="dark" scale="medium" style="height: 100%; display: block;">
+        <div class="app-container">
+
+            <div class="control-bar">
+                <sp-picker id="canary-stealth-engine" style="flex: 1; min-width: 0;">
+                    <sp-menu-item value="chromium" selected>Chromium 标准后端</sp-menu-item>
+                    <sp-menu-item value="rebrowser">Rebrowser 强化版</sp-menu-item>
+                    <sp-menu-item value="camoufox">Camoufox 魔改版</sp-menu-item>
+                </sp-picker>
+                <sp-button id="btn-canary-run" variant="cta">运行体检</sp-button>
+            </div>
+
+            <div class="canary-panels-stack">
+                <div class="quadrant-card" id="card-network">
+                    <div class="qh-title">网络与协议指纹</div>
+                    <div class="card-divider"></div>
+                    <div class="quadrant-body" id="q-body-network"></div>
+                </div>
+                <div class="quadrant-card" id="card-identity">
+                    <div class="qh-title">身份与环境特征</div>
+                    <div class="card-divider"></div>
+                    <div class="quadrant-body" id="q-body-identity"></div>
+                </div>
+                <div class="quadrant-card" id="card-hardware">
+                    <div class="qh-title">硬件与图形渲染</div>
+                    <div class="card-divider"></div>
+                    <div class="quadrant-body" id="q-body-hardware"></div>
+                </div>
+                <div class="quadrant-card" id="card-combat">
+                    <div class="qh-title">实战突防验证</div>
+                    <div class="card-divider"></div>
+                    <div class="quadrant-body" id="q-body-combat"></div>
+                </div>
+            </div>
+
+            <div class="log-wrapper">
+                <div
+                    style="margin-bottom: 6px; color: #8e9092; font-size: 13px; font-weight: bold; letter-spacing: 1px;">
+                    SYSTEM LOGS //</div>
+                <div class="log-box" id="canary-log-content">
+                    <div class="canary-log-placeholder">--- 金丝雀专属日志（与任务看板隔离）---</div>
+                </div>
+            </div>
+
+        </div>
+    </sp-theme>
+
+    <script src="bridge.js"></script>
+    <script src="canary.js"></script>
+
+</body>
+
+</html>

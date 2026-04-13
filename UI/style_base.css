@@ -1,0 +1,100 @@
+/* =========================================
+   style_base.css  - 全局变量、字体与底层基建
+   ========================================= */
+
+/* 1. 全局 CSS 变量 */
+:root {
+    --unified-blue: #31a8ff; /* 核心统一蓝色 */
+    --trash-red: #ff5555;    /* 垃圾桶红色 */
+    --bg-dark: #121212;      /* 全局深色背景 */
+    --border-color: #444;    /* 通用边框颜色 */
+    --text-gray: #aaa;       /* 通用灰文本颜色 */
+}
+
+/* 2. 字体定义 (已合并去重原代码中的冗余定义) */
+@font-face {
+    font-family: 'DS-Digital';
+    src: url('DS-DIGI-1.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'DS-Digital';
+    src: url('DS-DIGIB-2.ttf') format('truetype');
+    font-weight: bold;
+    font-style: normal;
+}
+
+/* 3. 基础盒模型与全局 Reset */
+* { 
+    box-sizing: border-box; 
+}
+
+body {
+    margin: 0; 
+    padding: 0;
+    background-color: var(--bg-dark);
+    font-family: adobe-clean, 'Source Sans Pro', sans-serif;
+    color: #E0E0E0;
+    user-select: none;
+    width: 100vw; 
+    height: 100vh;
+    overflow: hidden; /* 防止出现意外滚动条 */
+    overflow-y: auto; /* 允许系统兜底滚动 */
+}
+
+/* ==========================================
+   4. 全局定制化滚动条 (极客暗黑风)
+========================================== */
+
+/* 作用于整个程序的所有滚动条 */
+::-webkit-scrollbar {
+    width: 14px;  /* 滚动条整体宽度 */
+}
+
+/* 滚动条滑道背景 */
+::-webkit-scrollbar-track {
+    background: #1a1a1a; 
+    border-radius: 4px;
+}
+
+/* 滚动条滑块 */
+::-webkit-scrollbar-thumb {
+    background-color: #444; 
+    border-radius: 6px;
+    border: 3px solid #1a1a1a; /* 边框模拟悬浮效果 */
+}
+
+/* 滑块悬停时的颜色变化 */
+::-webkit-scrollbar-thumb:hover {
+    background-color: #555; 
+}
+
+/* 滚动条上下两端的按钮区域 (承载小三角) */
+::-webkit-scrollbar-button:single-button {
+    background-color: #252525;
+    display: block;
+    height: 14px;
+    border-radius: 2px;
+}
+
+::-webkit-scrollbar-button:single-button:hover {
+    background-color: #333;
+}
+
+/* 向上小三角 */
+::-webkit-scrollbar-button:single-button:vertical:decrement {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' fill='%23aaaaaa'><polygon points='50,20 20,80 80,80'/></svg>");
+    background-size: 8px;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+/* 向下小三角 */
+::-webkit-scrollbar-button:single-button:vertical:increment {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' fill='%23aaaaaa'><polygon points='20,20 80,20 50,80'/></svg>");
+    background-size: 8px;
+    background-position: center;
+    background-repeat: no-repeat;
+}

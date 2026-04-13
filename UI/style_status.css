@@ -1,0 +1,293 @@
+/* ==========================================
+   style_status.css - 底部专业状态监控栏 (大一统整合版)
+   ========================================== */
+
+/* ==========================================
+   1. 状态栏底座 (VS Code 风格)
+   ========================================== */
+.bottom-status-bar {
+    position: fixed;
+    bottom: 0; 
+    left: 0;
+    width: 100%; 
+    height: 36px;
+    background-color: #252526;
+    border-top: 1px solid #333;
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center;
+    padding: 0 18px; 
+    box-sizing: border-box;
+    z-index: 9999;
+}
+
+/* ==========================================
+   2. 左侧极客风署名
+   ========================================== */
+.bottom-status-bar .brand-signature {
+    font-size: 12px; 
+    color: #9ca3af;
+    font-family: Consolas, "Courier New", monospace; 
+    letter-spacing: 0.5px;
+    
+    /* 新增：空间不足时，左侧文字自动变省略号(...)，誓死保卫右侧监控区 */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 1; /* 允许它被压缩 */
+    min-width: 0;   /* Flex 布局截断必备神技 */
+    margin-right: 20px; /* 和右边保持安全距离 */
+}
+
+.bottom-status-bar .brand-signature i { 
+    margin-right: 4px; 
+    color: #9ca3af; 
+}
+
+/* ==========================================
+   3. 右侧监控区总容器 (修复重叠问题)
+   ========================================== */
+.bottom-status-bar .system-monitor-widget {
+    display: flex; 
+    align-items: center; 
+    gap: 24px; /* 👈 核心：加大模块之间的间距！防止代理弹出时挤到网速监控 */
+    cursor: default;
+    flex-shrink: 0;
+    white-space: nowrap; 
+}
+
+
+/* ------------------------------------------
+   模块 A：网速监控区 (速度 + 箭头)
+------------------------------------------ */
+.network-speed-box {
+    display: flex; 
+    align-items: center; 
+    gap: 14px; /* 稍微拉开上下行数据的间距，呼吸感更好 */
+}
+
+.network-speed-box .speed-item {
+    display: flex; 
+    align-items: center;
+    /* 👈 核心 1：给容器赋予绝对固定宽度！彻底消灭晃动。 */
+    /* 建议值：75px 到 85px，如果你的速度达到 999.9 也能装下 */
+    width: 80px;  
+    white-space: nowrap; 
+}
+
+/* 👈 核心 2：上下箭头调整：变大并与数字对齐 */
+.network-speed-box .speed-item i.fa-solid {
+    font-size: 16px; /* 从 12px 调大，视觉上与数字高度持平 */
+    color: #444; 
+    margin-right: 6px;
+    transform: translateY(1px); /* 微调基线使其与液晶数字完美水平居中 */
+}
+
+/* 液晶数字部分 */
+.network-speed-box .speed-item small {
+    font-family: 'DS-Digital', sans-serif !important;
+    font-size: 22px !important; 
+    font-weight: normal; 
+    letter-spacing: 1px;
+    color: #31a8ff; 
+    transform: translateY(1px); 
+}
+
+/* 单位部分 */
+.network-speed-box .speed-item kbd {
+    font-family: 'DS-Digital', sans-serif !important;
+    font-size: 22px !important; 
+    font-weight: normal; 
+    letter-spacing: 1px;
+    background: transparent !important; 
+    border: none !important; 
+    box-shadow: none !important;
+    padding: 0 !important; 
+    margin-left: 4px; 
+    /* 👈 核心 3：单位色彩改为 #444，降低视觉喧宾夺主感 */
+    color: #444 !important; 
+    transform: translateY(1px); 
+    white-space: nowrap; 
+}
+
+/* ------------------------------------------
+   模块 B：网络连通性 (图标 + CN/GLB)
+------------------------------------------ */
+.status-icon-group {
+    display: flex; 
+    align-items: center; 
+    gap: 4px;
+}
+
+/* 强制缩小原生 Spectrum 图标，涵盖所有信号格数和断网图标 */
+.bottom-status-bar sp-icon-confidence-four,
+.bottom-status-bar sp-icon-confidence-three,
+.bottom-status-bar sp-icon-confidence-two,
+.bottom-status-bar sp-icon-confidence-one,
+.bottom-status-bar sp-icon-link-off,
+.bottom-status-bar sp-icon-bug {
+    width: 16px !important; 
+    height: 16px !important;
+    transition: color 0.3s ease, filter 0.3s ease;
+}
+
+.status-icon-group .lcd-label {
+    font-family: 'DS-Digital', sans-serif !important;
+    font-size: 20px !important; 
+    font-weight: normal; 
+    letter-spacing: 1.5px;
+    color: #9ca3af; 
+    margin-left: 4px;
+    transform: translateY(2px); /* 同步微调，对齐前方的信号条 */
+    
+}
+
+/* ==========================================
+   全局 LED 指示灯状态颜色库 (精简专业版)
+   ========================================== */
+
+/* Adobe 标准蓝 (网络连通) - 统一使用你定义的 --unified-blue */
+.net-blue {
+    color: var(--unified-blue, #348ff4) !important; 
+    /* 微微泛蓝光，增加极客感 */
+    filter: drop-shadow(0 0 4px rgba(49, 168, 255, 0));
+}
+
+/* Adobe 标准红 (断网/报错) - 统一使用你定义的 --trash-red */
+.net-disconnected, .bug-red {
+    color: var(--trash-red, #ff5555) !important;
+    filter: drop-shadow(0 0 4px rgba(255, 85, 85, 0));
+}
+
+/* 翠绿 (仅留给表示程序运转正常的虫子) */
+.bug-green {
+    color: #10b981 !important;
+    filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.6));
+}
+
+/* ==========================================
+   模块 C：系统运行状态 (按需动力学版)
+   ========================================== */
+
+/* 1. 统一文字颜色：深灰色 #444 */
+.bottom-status-bar .status-text {
+    font-size: 14px; 
+    color: #444 !important; 
+    font-weight: 500; 
+    margin-left: 2px;
+    white-space: nowrap; 
+}
+
+/* 2. 状态图标颜色库 (仅采集状态带呼吸) */
+
+/* 系统就绪 - Adobe 标准蓝 (静态) */
+.bug-idle, .bug-green { 
+    color: #31a8ff !important; 
+    filter: none; /* 彻底移除发光 */
+}
+
+/* 运行中 - 琥珀橙 (开启明暗呼吸动画) */
+.bug-running, .bug-orange {
+    color: #f59e0b !important;
+    filter: none; /* 移除投影，改用明暗呼吸 */
+    animation: breathing-light 2s infinite ease-in-out !important;
+}
+
+/* 错误/断开 - Adobe 标准红 (静态) */
+.bug-error, .bug-red {
+    color: var(--trash-red, #ff5555) !important;
+    filter: none;
+}
+
+/* 3. 呼吸灯动画：仅改变透明度/亮度，不改变尺寸(Scale) */
+@keyframes breathing-light {
+    0%   { opacity: 0.4; filter: brightness(0.8); }
+    50%  { opacity: 1;   filter: brightness(1.2); }
+    100% { opacity: 0.4; filter: brightness(0.8); }
+}
+
+/* ------------------------------------------
+   模块 D：代理通道配置区 (原生自适应版)
+------------------------------------------ */
+.status-bar-item {
+    display: flex;
+    align-items: center;
+    gap: 12px; /* 内部下拉框和输入框的间距 */
+}
+
+/* ==========================================
+   全屏视觉基线微调 (像素级强迫症对齐版)
+   ========================================== */
+
+/* 1. 中部左侧：Adobe 下拉框向下微调 */
+#proxy-picker {
+    transform: translateY(4px); 
+}
+
+/* 2. 中部右侧：弹出的输入框及按钮组微调 */
+#proxy-input-group {
+    /* 如果你想让输入框和按钮整体【向下】，填正数，比如 1px 或 2px */
+    /* 如果你想让输入框和按钮整体【向上】，填负数，比如 -1px 或 -2px */
+    transform: translateY(-1px); 
+}
+
+/* 3. 两侧：左侧文本/状态图标，以及右侧网速组，统一向上微调 */
+#status-bug,
+#heartbeat-text,
+.brand-signature,
+.network-speed-box {
+    transform: translateY(-2px); 
+}
+
+
+/* 代理输入框动态UI */
+#proxy-input-group {
+    display: none;        /* 默认隐藏 */
+    align-items: center;
+    gap: 8px;             /* 输入框与确认/取消按钮的间距 */
+}
+
+/* 当 JS 赋予 show 类名时显示 */
+#proxy-input-group.show {
+    display: flex; 
+    animation: slideInRight 0.2s ease-out; /* 丝滑弹出 */
+}
+
+#proxy-input {
+    width: 150px; /* 给输入框固定宽度，避免文字显示不全 */
+}
+
+/* 弹出动画 */
+@keyframes slideInRight {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ==========================================
+   新增补充：代理输入框动态UI与防挤压策略
+   ========================================== */
+#proxy-input-group {
+    display: none;        /* 默认隐藏，由 JS 的 .show 类名接管显示 */
+    align-items: center;
+    gap: 6px;
+    margin-left: 4px;     /* 与下拉菜单拉开一点呼吸空间 */
+    animation: slideInRight 0.2s ease-out; /* 优雅的滑入动画 */
+}
+
+/* 当 JS 赋予 show 类名时，激活显示 */
+#proxy-input-group.show {
+    display: flex; 
+}
+
+/* 核心防挤压处理 */
+#proxy-input {
+    width: 150px !important;  /* 设定合理的固定宽度，预留充足的 IP 输入空间 */
+    flex-shrink: 0 !important;/* 权重拉满：宁可撑开容器，绝不被 Flex 挤压变形 */
+}
+
+/* 弹出时的丝滑过渡动画 */
+@keyframes slideInRight {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
