@@ -163,11 +163,9 @@ class ProxyRotator:
         """
         构建并返回 Crawlee ProxyConfiguration 实例，供 CrawleeEngineFactory 注入。
 
-        实现：
-            from crawlee.proxy_configuration import ProxyConfiguration
-            return await ProxyConfiguration.create(
-                proxy_urls=[p.url for p in self._proxies]
-            )
+        与 CrawleeEngineFactory._build_proxy_configuration 一致：使用构造函数
+        ``ProxyConfiguration(proxy_urls=...)``（当前 crawlee-python 无稳定的
+        ``ProxyConfiguration.create`` 类方法）。
         若代理池为空，返回 None（爬虫退化为直连模式）。
 
         Returns:
@@ -176,6 +174,6 @@ class ProxyRotator:
         if not self._proxies:
             return None
         from crawlee.proxy_configuration import ProxyConfiguration
-        return await ProxyConfiguration.create(
-            proxy_urls=[p.url for p in self._proxies]
-        )
+
+        proxy_urls: list[str | None] = list[str | None]([p.url for p in self._proxies])
+        return ProxyConfiguration(proxy_urls=proxy_urls)

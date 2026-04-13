@@ -1,0 +1,3 @@
+"""Optional dependency; runtime may ImportError."""
+
+def patch() -> None: ...

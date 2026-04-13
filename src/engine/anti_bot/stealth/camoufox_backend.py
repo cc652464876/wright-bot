@@ -67,8 +67,7 @@ class CamoufoxBackend(AbstractBrowserBackend):
             stealth_config: 反检测配置块，提供 headless / ignore_ssl_error 等参数。
             app_config    : 应用级配置，提供 camoufox_path（为空时由 camoufox 包自动管理）。
         """
-        self._stealth_config = stealth_config
-        self._app_config     = app_config
+        super().__init__(stealth_config, app_config)
         # _browser_cm: camoufox.AsyncNewBrowser 上下文管理器实例（持有 __aexit__ 引用）
         self._browser_cm = None
         self._browser    = None  # camoufox Browser（Playwright Browser 兼容）

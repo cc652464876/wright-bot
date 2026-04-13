@@ -129,14 +129,19 @@ class DatabaseManager:
         异常时通过 future.set_exception() 透传给 enqueue_write() 的调用方。
         使用 task_done() 以支持 queue.join() 实现优雅关闭。
         """
+        conn = self._conn
+        if conn is None:
+            raise RuntimeError(
+                "DatabaseManager 未 initialize：_writer_loop 不应在连接建立前启动"
+            )
         while True:
             request = await self._write_queue.get()
             try:
                 if request.many:
-                    await self._conn.executemany(request.sql, request.params)
+                    await conn.executemany(request.sql, request.params)
                 else:
-                    await self._conn.execute(request.sql, request.params)
-                await self._conn.commit()
+                    await conn.execute(request.sql, request.params)
+                await conn.commit()
             except asyncio.CancelledError:
                 # close() 取消任务时可能正好在处理一个请求；
                 # 通知调用方此请求被取消，然后 re-raise 退出循环

@@ -1,0 +1,39 @@
+feat(canary): wire synthetic checkup through main crawl pipeline with typed UI contract
+
+Introduce the canary module (dashboard state, TypedDict JSON contract aligned with
+the canary UI, quadrant probe scaffolding, and CanaryCrawlStrategy) so checkups
+reuse Crawlee, anti-bot, and MasterDispatcher instead of a parallel path.
+
+refactor(site): decouple audit workspace and narrow assembled pipeline types
+
+Add AuditWorkspaceProvider (Protocol) and a frozen SitePipeline dataclass capturing
+the post-assembly handler graph as non-optional components; replace direct
+SiteAuditCenter coupling where a workspace abstraction suffices. Extract
+_resolve_seed_urls so canary strategies can supply fixed seed URLs without
+duplicating the main run loop.
+
+fix(crawlee): reconcile factory with current Crawlee storage and typing expectations
+
+Return type[BrowserFactory] from the lazy factory accessor; inject
+MemoryStorageClient for is_canary tasks to isolate ephemeral queues/stores from
+default on-disk storage; assert fingerprint profile presence before pre-navigation
+hooks; type proxy URL lists as list[str | None] for ProxyConfiguration invariance.
+
+refactor(bridge): tighten UI bridge typing and remove brittle suppressions
+
+Return CanaryDashboardDict from fetch_canary_dashboard; delegate payload assembly to
+the canary dashboard builder with dispatcher_running / is_canary_active semantics;
+replace bare os.startfile type: ignore with a guarded callable check; add explicit
+null checks for webview.create_window and window.events; replace silent except
+pass blocks with structured debug logging where appropriate; implement
+run_canary_checkup by submitting an is_canary task via asyncio.run_coroutine_threadsafe.
+
+feat(app): expose canary run visibility on the dispatcher
+
+Add task_info.is_canary on settings and is_canary_run_active on MasterDispatcher
+for dashboard locking semantics while a canary strategy is active.
+
+chore(types): add Pyright configuration and local stub typings
+
+Add pyrightconfig.json and typings/ shims to close third-party annotation gaps
+supporting the above refactors.

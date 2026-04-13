@@ -20,6 +20,8 @@ import asyncio
 from typing import Callable, Optional, TYPE_CHECKING
 from urllib.parse import urlparse
 
+from crawlee.crawlers import PlaywrightCrawlingContext
+from playwright.async_api import Locator, Page
 from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -60,7 +62,7 @@ class ActionHandler:
     # 公开接口（职责链节点入口）
     # ------------------------------------------------------------------
 
-    async def handle_action(self, context: object) -> None:
+    async def handle_action(self, context: PlaywrightCrawlingContext) -> None:
         """
         NEED_CLICK 分支主处理函数（职责链入口）。
 
@@ -80,11 +82,9 @@ class ActionHandler:
         if not self._is_running():
             return
 
-        page = getattr(context, "page", None)
-        if page is None:
-            return
+        page = context.page
 
-        request = getattr(context, "request", None)
+        request = context.request
         current_url: str = getattr(request, "url", "Unknown")
         user_data: dict = getattr(request, "user_data", {}) or {}
         target_index: int = int(user_data.get("target_index", 0))
@@ -129,7 +129,7 @@ class ActionHandler:
     # 私有工具
     # ------------------------------------------------------------------
 
-    def _build_button_locator(self, page: object) -> object:
+    def _build_button_locator(self, page: Page) -> Locator:
         """
         使用与 Interactor.DOWNLOAD_BUTTON_SELECTORS 完全一致的选择器字符串
         创建 Playwright Locator，确保 target_index 与侦察兵扫描时的索引严格对应。
@@ -142,4 +142,4 @@ class ActionHandler:
         # 运行时导入以获取 DOWNLOAD_BUTTON_SELECTORS 常量，避免模块级循环依赖
         from src.modules.site.handlers.interactor import Interactor
         combined_selector = ", ".join(Interactor.DOWNLOAD_BUTTON_SELECTORS)
-        return page.locator(combined_selector)  # type: ignore[union-attr]
+        return page.locator(combined_selector)

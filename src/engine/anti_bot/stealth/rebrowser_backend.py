@@ -76,8 +76,7 @@ class RebrowserBackend(AbstractBrowserBackend):
             stealth_config: 反检测配置块，提供 headless / ignore_ssl_error 等参数。
             app_config    : 应用级配置，提供 rebrowser_path / chromium_path 等可执行路径。
         """
-        self._stealth_config = stealth_config
-        self._app_config     = app_config
+        super().__init__(stealth_config, app_config)
         self._playwright: Optional["Playwright"] = None
         self._browser:    Optional["Browser"]    = None
         self._context:    Optional["BrowserContext"] = None

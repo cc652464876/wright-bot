@@ -33,11 +33,17 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import webview
+
+from src.modules.canary.contracts import CanaryDashboardDict
+from src.utils.logger import get_logger
+
+_log_bridge = get_logger(__name__)
 
 if TYPE_CHECKING:
     from src.app.dispatcher import MasterDispatcher
@@ -132,6 +138,7 @@ def _read_log_file_tail(limit: int) -> List[Dict[str, str]]:
         return entries[-limit:][::-1]
 
     except Exception:
+        _log_bridge.debug("读取日志文件尾部失败", exc_info=True)
         return []
 
 
@@ -155,49 +162,22 @@ def _snapshot_canary_logs(limit: int) -> List[Dict[str, str]]:
     return snap[-limit:][::-1]
 
 
-def _build_canary_dashboard_payload(dispatcher: Any) -> Dict[str, Any]:
+def _build_canary_dashboard_payload(dispatcher: Any) -> CanaryDashboardDict:
     """
-    组装金丝雀 JSON 契约（占位）。
-    主任务占用调度器时，对金丝雀侧视为 system_state=locked（与规格「全局执行锁」对齐）。
+    组装金丝雀 JSON 契约：合并内存象限态 + 调度器占用语义。
+    - idle: 无任务
+    - running: 金丝雀合成任务执行中
+    - locked: 普通爬取任务占用调度器
     """
     from src.config.settings import get_settings
+    from src.modules.canary.dashboard import build_payload
 
-    def _item(
-        item_id: str,
-        label: str,
-        state: str = "idle",
-        desc: str = "等待检测 / 尚未执行",
-    ) -> Dict[str, str]:
-        return {"id": item_id, "label": label, "state": state, "desc": desc}
-
-    crawl_running = bool(dispatcher.is_task_running())
     engine = str(get_settings().stealth.stealth_engine)
-
-    return {
-        "system_state": "locked" if crawl_running else "idle",
-        "current_engine": engine,
-        "progress_percent": 0,
-        "quadrants": {
-            "network": [
-                _item("tls_ja3", "TLS / JA3 指纹校验"),
-                _item("http_headers", "HTTP 报文与 IP 连通性"),
-                _item("webrtc_leak", "WebRTC 真实 IP 泄露"),
-            ],
-            "identity": [
-                _item("identity_locale", "综合身份与语言时区"),
-                _item("viewport_fit", "视口逻辑与物理尺寸对齐"),
-            ],
-            "hardware": [
-                _item("webgl_vendor", "WebGL 厂商与渲染引擎"),
-                _item("canvas_audio", "画布与音频哈希噪点"),
-            ],
-            "combat": [
-                _item("cf_shield", "Cloudflare 隐形质询 (5s盾)"),
-                _item("cdp_automation", "CDP 协议与自动化漏洞"),
-                _item("behavior_score", "仿生行为与轨迹评分"),
-            ],
-        },
-    }
+    return build_payload(
+        dispatcher_running=dispatcher.is_task_running(),
+        is_canary_active=dispatcher.is_canary_run_active(),
+        current_engine=engine,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +235,9 @@ class PrismAPI:
                 f"window.setPanelButtonInactive && window.setPanelButtonInactive({token})"
             )
         except Exception:
-            pass
+            _log_bridge.debug(
+                "主面板按钮状态通知 evaluate_js 失败 panel=%r", panel, exc_info=True
+            )
 
     def raise_monitor_window(self) -> None:
         """若日志看板窗口仍存在，则恢复并提到前台；不创建新窗口。"""
@@ -266,13 +248,13 @@ class PrismAPI:
             try:
                 w.restore()
             except Exception:
-                pass
+                _log_bridge.debug("监控窗口 restore 失败", exc_info=True)
             try:
                 w.show()
             except Exception:
-                pass
+                _log_bridge.debug("监控窗口 show 失败", exc_info=True)
         except Exception:
-            pass
+            _log_bridge.debug("raise_monitor_window 失败", exc_info=True)
 
     def raise_canary_window(self) -> None:
         """若金丝雀窗口仍存在，则恢复并提到前台；不创建新窗口。"""
@@ -283,13 +265,13 @@ class PrismAPI:
             try:
                 w.restore()
             except Exception:
-                pass
+                _log_bridge.debug("金丝雀窗口 restore 失败", exc_info=True)
             try:
                 w.show()
             except Exception:
-                pass
+                _log_bridge.debug("金丝雀窗口 show 失败", exc_info=True)
         except Exception:
-            pass
+            _log_bridge.debug("raise_canary_window 失败", exc_info=True)
 
     # ------------------------------------------------------------------
     # 任务控制 API（前端按钮触发）
@@ -412,6 +394,7 @@ class PrismAPI:
                 return str(result[0])
             return None
         except Exception:
+            _log_bridge.debug("open_folder_dialog 失败", exc_info=True)
             return None
 
     def select_folder(self) -> Optional[str]:
@@ -445,6 +428,7 @@ class PrismAPI:
                 return str(result[0])
             return None
         except Exception:
+            _log_bridge.debug("select_file 对话框失败", exc_info=True)
             return None
 
     def open_save_directory(self, path: str) -> Dict[str, Any]:
@@ -468,8 +452,11 @@ class PrismAPI:
 
         try:
             if sys.platform == "win32":
-                # os.startfile 是 Windows 专属 API，直接在资源管理器中打开
-                os.startfile(path)  # type: ignore[attr-defined]
+                startfile = getattr(os, "startfile", None)
+                if callable(startfile):
+                    startfile(path)
+                else:
+                    return {"success": False, "message": "当前环境不支持 os.startfile"}
             elif sys.platform == "darwin":
                 subprocess.Popen(["open", path])
             else:
@@ -559,6 +546,10 @@ class PrismAPI:
                 if wins and len(wins) > 0:
                     win = wins[0]
             except Exception:
+                _log_bridge.debug(
+                    "_emit_robots_preview_result 获取 webview.windows 失败",
+                    exc_info=True,
+                )
                 win = None
         if win is None:
             return
@@ -571,7 +562,9 @@ class PrismAPI:
                 f"window.__resolveRobotsPreview && window.__resolveRobotsPreview({payload})"
             )
         except Exception:
-            pass
+            _log_bridge.debug(
+                "robots 预览 evaluate_js 失败 request_id=%r", request_id, exc_info=True
+            )
 
     # ------------------------------------------------------------------
     # 日志 API
@@ -604,10 +597,14 @@ class PrismAPI:
         """供 monitor.html 仪表盘轮询；与 `get_dashboard_data` 一致。"""
         return self.get_dashboard_data()
 
-    def fetch_canary_dashboard(self) -> Dict[str, Any]:
+    def fetch_canary_dashboard(self) -> CanaryDashboardDict:
         """
         金丝雀看板轮询（UI/canary.html）。
-        当前返回契约形状下的占位数据；探针层接入后替换 quadrants / progress 来源。
+
+        拉取金丝雀看板数据（内存态 quadrants + 进度 + 调度占用语义）。
+        目前已实装 Sannysoft 探针（Identity/Hardware）；Network 与 Combat 象限已接入
+        结构化脚手架（extract/build/run），部分底层特征（如 JA3、完整 WebRTC 泄漏探测）
+        处于 warn 待扩展状态。
         """
         return _build_canary_dashboard_payload(self._dispatcher)
 
@@ -634,6 +631,7 @@ class PrismAPI:
                 if wins and len(wins) > 0:
                     win = wins[0]
             except Exception:
+                _log_bridge.debug("set_stealth_engine 获取 webview.windows 失败", exc_info=True)
                 win = None
         if win is not None:
             try:
@@ -643,24 +641,57 @@ class PrismAPI:
                     f"if(el){{el.value={safe};}}}})();"
                 )
             except Exception:
-                pass
+                _log_bridge.debug(
+                    "set_stealth_engine 同步主窗 #stealth-engine 失败", exc_info=True
+                )
         return {"success": True, "message": "已更新 stealth_engine"}
 
     def run_canary_checkup(self) -> Dict[str, Any]:
         """
-        「运行体检」占位：探针编排接入前返回提示，不启动浏览器。
-        结果写入金丝雀专属日志，不混入任务看板全局日志。
+        「运行体检」：组装 is_canary=True 的合成站点任务，走 MasterDispatcher 主通路。
         """
         if self._dispatcher.is_task_running():
-            _append_canary_log("WARNING", "[异常] 主控任务运行中，无法进行金丝雀体检（全局锁占位）")
+            _append_canary_log("WARNING", "[异常] 调度器占用中，无法启动金丝雀合成任务")
             return {
                 "success": False,
-                "message": "主控任务运行中，无法进行金丝雀体检（全局锁占位）",
+                "message": "调度器占用中（请先结束当前任务后再运行体检）",
             }
-        _append_canary_log("INFO", "[系统] 运行体检（占位）：探针层接入后将启动浏览器流水线")
+        from src.config.settings import get_settings
+        from src.modules.canary.dashboard import reset_for_new_run
+        from src.modules.canary.strategy import DEFAULT_CANARY_SEED_URLS
+
+        reset_for_new_run()
+        _append_canary_log("INFO", "[系统] 已提交金丝雀合成任务（与主线路共享 Crawlee 与反爬栈）")
+
+        base = get_settings().model_dump()
+        task_info = dict(base.get("task_info") or {})
+        task_info["mode"] = "site"
+        task_info["is_canary"] = True
+        task_info["task_name"] = f"Canary_Checkup_{int(time.time() * 1000)}"
+        task_info["max_pdf_count"] = max(len(DEFAULT_CANARY_SEED_URLS) + 10, 50)
+        task_info["enable_realtime_jsonl_export"] = False
+
+        strat = dict(base.get("strategy_settings") or {})
+        strat["crawl_strategy"] = "direct"
+        strat["target_urls"] = list(DEFAULT_CANARY_SEED_URLS)
+
+        perf = dict(base.get("performance") or {})
+        perf["max_concurrency"] = 1
+
+        config_dict = {
+            **base,
+            "task_info": task_info,
+            "strategy_settings": strat,
+            "performance": perf,
+        }
+
+        asyncio.run_coroutine_threadsafe(
+            self._dispatcher.run_with_config(config_dict),
+            self._loop,
+        )
         return {
             "success": True,
-            "message": "UI 已就绪；探针层接入后将在此启动体检流水线",
+            "message": "金丝雀合成任务已提交至后台事件循环",
         }
 
     def toggle_canary_window(self) -> bool:
@@ -678,6 +709,7 @@ class PrismAPI:
                 try:
                     alive = self._canary_window in webview.windows
                 except Exception:
+                    _log_bridge.debug("金丝雀窗口存活检测失败", exc_info=True)
                     alive = False
                 if not alive:
                     self._canary_window = None
@@ -686,7 +718,7 @@ class PrismAPI:
                 try:
                     self._canary_window.destroy()
                 except Exception:
-                    pass
+                    _log_bridge.debug("金丝雀窗口 destroy 失败", exc_info=True)
                 self._canary_window = None
                 return False
 
@@ -701,14 +733,24 @@ class PrismAPI:
                 width=920,
                 height=720,
             )
+            if win is None:
+                _log_bridge.error("金丝雀窗口 webview.create_window 返回 None")
+                self._canary_window = None
+                return False
+            events = getattr(win, "events", None)
+            if events is None:
+                _log_bridge.error("金丝雀窗口缺少 events，无法注册 closed 回调")
+                self._canary_window = None
+                return False
             try:
-                win.events.closed += _on_closed
+                events.closed += _on_closed
             except Exception:
-                pass
+                _log_bridge.debug("金丝雀窗口注册 closed 回调失败", exc_info=True)
             self._canary_window = win
             _append_canary_log("INFO", "[系统] 金丝雀专属日志通道已就绪（与任务看板日志隔离）")
             return True
         except Exception:
+            _log_bridge.debug("toggle_canary_window 失败", exc_info=True)
             self._canary_window = None
             return False
 
@@ -727,6 +769,7 @@ class PrismAPI:
                 try:
                     alive = self._monitor_window in webview.windows
                 except Exception:
+                    _log_bridge.debug("监控窗口存活检测失败", exc_info=True)
                     alive = False
                 if not alive:
                     self._monitor_window = None
@@ -735,7 +778,7 @@ class PrismAPI:
                 try:
                     self._monitor_window.destroy()
                 except Exception:
-                    pass
+                    _log_bridge.debug("监控窗口 destroy 失败", exc_info=True)
                 self._monitor_window = None
                 return False
 
@@ -750,13 +793,23 @@ class PrismAPI:
                 width=900,
                 height=640,
             )
+            if win is None:
+                _log_bridge.error("监控窗口 webview.create_window 返回 None")
+                self._monitor_window = None
+                return False
+            events = getattr(win, "events", None)
+            if events is None:
+                _log_bridge.error("监控窗口缺少 events，无法注册 closed 回调")
+                self._monitor_window = None
+                return False
             try:
-                win.events.closed += _on_closed
+                events.closed += _on_closed
             except Exception:
-                pass
+                _log_bridge.debug("监控窗口注册 closed 回调失败", exc_info=True)
             self._monitor_window = win
             return True
         except Exception:
+            _log_bridge.debug("toggle_monitor_window 失败", exc_info=True)
             self._monitor_window = None
             return False
 
@@ -853,13 +906,18 @@ def create_app() -> webview.Window:
         height=800,
         min_size=(900, 600),
     )
+    if window is None:
+        raise RuntimeError("主窗口 webview.create_window 返回 None，无法启动应用")
     api.bind_main_window(window)
 
     # ── 5. 页面加载完成后启动 NetworkMonitor（注入主窗口以便 evaluate_js） ─
     def _on_loaded() -> None:
         asyncio.run_coroutine_threadsafe(net_monitor.start(window=window), loop)
 
-    window.events.loaded += _on_loaded
+    main_events = getattr(window, "events", None)
+    if main_events is None:
+        raise RuntimeError("主窗口缺少 events，无法注册 loaded 回调")
+    main_events.loaded += _on_loaded
 
     # ── 6. 安装内存日志 sink（必须在 setup_logger() / logger.remove() 之后调用）
     #       此时 main.py 已完成日志初始化，sink 不会被清除。

@@ -67,8 +67,7 @@ class PlaywrightBackend(AbstractBrowserBackend):
                             browser_type（通过 EngineConfig 间接传入）等参数。
             app_config    : 应用级配置，提供 chromium_path 等可执行路径。
         """
-        self._stealth_config = stealth_config
-        self._app_config = app_config
+        super().__init__(stealth_config, app_config)
         self._playwright: Optional[Playwright] = None
         self._browser:   Optional[Browser]     = None
         self._context:   Optional[BrowserContext] = None

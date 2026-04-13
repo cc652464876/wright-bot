@@ -18,7 +18,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
-from loguru import logger
+from loguru import Logger, logger
 
 # 模块级存储：保留最近一次 setup_logger 的参数，供 set_level 复用
 _setup_params: dict[str, Any] = {}
@@ -162,7 +162,7 @@ def setup_logger(
         logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
 
 
-def get_logger(name: str = "") -> "logger":
+def get_logger(name: str = "") -> Logger:
     """
     获取携带模块名标签的 loguru logger 实例。
     各模块在文件顶部调用：_log = get_logger(__name__)
@@ -173,7 +173,7 @@ def get_logger(name: str = "") -> "logger":
         name: 通常传入 __name__，即当前模块的完整包路径。
 
     Returns:
-        绑定了 module 字段的 loguru BoundLogger 实例。
+        绑定了 module 字段的 loguru Logger 实例。
     """
     return logger.bind(module=name)
 

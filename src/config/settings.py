@@ -49,6 +49,8 @@ class TaskInfoConfig(BaseModel):
     #: 为 True 时，SiteAuditCenter 在写 DB 的同时向各域名工作区追加实时文件流
     #: （scanned_urls.jsonl / scan_errors_log.txt / interactions.jsonl），供旧 UI tail。
     enable_realtime_jsonl_export: bool = False
+    #: 为 True 时表示由 UI 金丝雀「运行体检」下发的合成任务；Dispatcher 将路由到 CanaryMockStrategy。
+    is_canary: bool = False
 
 
 class StrategyConfig(BaseModel):

@@ -26,7 +26,7 @@ from playwright.async_api import (
 )
 
 if TYPE_CHECKING:
-    from src.config.settings import StealthConfig
+    from src.config.settings import AppConfig, StealthConfig
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +56,14 @@ class AbstractBrowserBackend(ABC):
 
     Pattern: Strategy —— 每个具体子类代表一种物理隔离的浏览器伪装策略。
     """
+
+    def __init__(self, stealth_config: "StealthConfig", app_config: "AppConfig") -> None:
+        """
+        统一注入反检测配置与应用级配置，供 BrowserFactory 以 ``type[AbstractBrowserBackend]``
+        静态类型安全地实例化各后端；子类须 ``super().__init__(...)`` 后再初始化自身状态。
+        """
+        self._stealth_config = stealth_config
+        self._app_config = app_config
 
     @abstractmethod
     async def __aenter__(self) -> "AbstractBrowserBackend":
@@ -142,13 +150,14 @@ class BrowserContextManager(AbstractBrowserBackend):
     Pattern: Context Manager（async __aenter__ / __aexit__） + Strategy（AbstractBrowserBackend 具体策略）
     """
 
-    def __init__(self, stealth_config: "StealthConfig") -> None:
+    def __init__(self, stealth_config: "StealthConfig", app_config: "AppConfig") -> None:
         """
         Args:
             stealth_config: 来自 PrismSettings 的反检测配置块，
                             控制 headless / ignore_ssl / 视口大小等浏览器启动参数。
+            app_config    : 应用级配置（chromium 路径解析等）。
         """
-        self._stealth_config = stealth_config
+        super().__init__(stealth_config, app_config)
         self._playwright: Optional[Playwright] = None
         self._browser: Optional[Browser] = None
         self._context: Optional[BrowserContext] = None
@@ -160,8 +169,7 @@ class BrowserContextManager(AbstractBrowserBackend):
         Returns:
             已就绪的 BrowserContextManager 自身（可链式调用 .new_page()）。
         """
-        from src.config.settings import get_app_config
-        app_cfg = get_app_config()
+        app_cfg = self._app_config
 
         self._playwright = await async_playwright().start()
 

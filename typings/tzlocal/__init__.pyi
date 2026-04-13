@@ -1,0 +1,3 @@
+"""Shim for environments where tzlocal is not installed in the type-check venv."""
+
+def get_localzone() -> object: ...

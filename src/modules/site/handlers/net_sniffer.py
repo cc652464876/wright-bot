@@ -24,8 +24,8 @@ from typing import TYPE_CHECKING, Callable, Optional
 from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
+    from src.modules.site.audit.workspace_provider import AuditWorkspaceProvider
     from src.modules.site.parser import SiteDataParser
-    from src.modules.site.audit.audit_center import SiteAuditCenter
     from src.modules.site.handlers.downloader import Downloader
 
 _log = get_logger(__name__)
@@ -73,7 +73,7 @@ class NetSniffer:
         self._worker_task: Optional[asyncio.Task] = None
 
         # audit_center 在首次 attach_probe 时绑定（任务期间全局唯一实例）
-        self._audit_center: Optional["SiteAuditCenter"] = None
+        self._audit_center: Optional["AuditWorkspaceProvider"] = None
 
     # ------------------------------------------------------------------
     # 公开接口（职责链节点入口）
@@ -84,7 +84,7 @@ class NetSniffer:
         context: object,
         domain: str,
         domain_workspace: str,
-        audit_center: "SiteAuditCenter",
+        audit_center: "AuditWorkspaceProvider",
         downloader: "Downloader",
     ) -> None:
         """
@@ -95,7 +95,7 @@ class NetSniffer:
             context         : Crawlee PlaywrightCrawlingContext（含 .page 属性）。
             domain          : 当前页面所属核心域名。
             domain_workspace: 该域名的物理存储目录路径（供统计日志使用）。
-            audit_center    : SiteAuditCenter 实例（Worker 消费时写入）。
+            audit_center    : 审计工作区（Worker 消费时写入 record_result_batch）。
             downloader      : Downloader 实例（更新 files_found 统计计数器）。
         """
         # 绑定 audit_center（同一任务内只有一个实例，首次赋值后不再变更）
@@ -178,7 +178,7 @@ class NetSniffer:
         self,
         context: object,
         domain: str,
-        audit_center: "SiteAuditCenter",
+        audit_center: "AuditWorkspaceProvider",
         downloader: "Downloader",
     ) -> Callable:
         """
@@ -188,7 +188,7 @@ class NetSniffer:
         Args:
             context     : Crawlee 上下文（用于获取 context.page.url 作为 source_page）。
             domain      : 当前域名。
-            audit_center: 落盘目标审计中心。
+            audit_center: 落盘目标（record_result_batch）。
             downloader  : 统计更新目标下载器。
         Returns:
             async 闭包函数，签名为 (response) -> None。

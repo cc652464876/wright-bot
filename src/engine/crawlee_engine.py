@@ -38,6 +38,7 @@ from crawlee.sessions import SessionPool
 if TYPE_CHECKING:
     from crawlee.crawlers import PlaywrightPreNavCrawlingContext
     from src.config.settings import PrismSettings
+    from src.engine.anti_bot.fingerprint import FingerprintProfile
     from src.engine.browser_engine import AbstractBrowserBackend
     from src.engine.browser_factory import BrowserFactory
     from src.engine.anti_bot.proxy_rotator import ProxyRotator
@@ -66,8 +67,8 @@ _ANTIBOT_CHROMIUM_ARGS = [
 ]
 
 
-def _get_browser_factory() -> "BrowserFactory":
-    """延迟导入 BrowserFactory，避免顶层循环导入。"""
+def _get_browser_factory() -> "type[BrowserFactory]":
+    """延迟导入 BrowserFactory 类对象，避免顶层循环导入。"""
     from src.engine.browser_factory import BrowserFactory
     return BrowserFactory
 
@@ -135,6 +136,17 @@ class CrawleeEngineFactory:
             return self._create_playwright_crawler(common)
         else:  # "beautifulsoup"
             return self._create_beautifulsoup_crawler(common)
+
+    def _canary_storage_client_kwargs(self) -> dict:
+        """
+        金丝雀合成任务：Crawlee RequestQueue / KeyValueStore / Dataset 走纯内存实现，
+        避免与主任务共享默认落盘存储产生脏数据（阅后即焚）。
+        """
+        if not getattr(self._settings.task_info, "is_canary", False):
+            return {}
+        from crawlee.storage_clients import MemoryStorageClient
+
+        return {"storage_client": MemoryStorageClient()}
 
     # ------------------------------------------------------------------
     # 私有：参数构建
@@ -271,6 +283,7 @@ class CrawleeEngineFactory:
         # ── P0-04：双指纹互斥规则 ─────────────────────────────────────
         # use_fingerprint=True → 自研指纹注入 context，禁用 Crawlee 内置指纹生成器
         # use_fingerprint=False → 委托 Crawlee DefaultFingerprintGenerator 自动处理
+        profile: Optional["FingerprintProfile"] = None
         if stealth.use_fingerprint:
             from src.engine.anti_bot.fingerprint import FingerprintGenerator
             profile = FingerprintGenerator().generate()
@@ -310,6 +323,7 @@ class CrawleeEngineFactory:
             "fingerprint_generator":       fingerprint_generator,
             "session_pool":                session_pool,
             "navigation_timeout":          timedelta(seconds=tr.navigation_timeout_secs),
+            **self._canary_storage_client_kwargs(),
         }
         if proxy_config is not None:
             pw_kwargs["proxy_configuration"] = proxy_config
@@ -324,7 +338,8 @@ class CrawleeEngineFactory:
         if stealth.use_fingerprint:
             from src.engine.anti_bot.fingerprint import FingerprintInjector
             _injector = FingerprintInjector()
-            _fp       = profile  # 闭包捕获：与 browser_new_context_options 使用同一份 profile
+            assert profile is not None
+            _fp = profile  # 闭包捕获：与 browser_new_context_options 使用同一份 profile
 
             async def _fingerprint_hook(ctx: "PlaywrightPreNavCrawlingContext") -> None:
                 await _injector.inject(ctx.page, _fp)
@@ -343,7 +358,7 @@ class CrawleeEngineFactory:
             配置完毕的 BeautifulSoupCrawler 实例。
         """
         proxy_config = self._build_proxy_configuration()
-        bs_kwargs: dict = {**common_kwargs}
+        bs_kwargs: dict = {**common_kwargs, **self._canary_storage_client_kwargs()}
         if proxy_config is not None:
             bs_kwargs["proxy_configuration"] = proxy_config
         return BeautifulSoupCrawler(**bs_kwargs)
@@ -416,6 +431,8 @@ class CrawleeEngineFactory:
 
         from crawlee.proxy_configuration import ProxyConfiguration
 
-        # 同步提取 URL 列表（绕过 async build()）
-        proxy_urls = [p.url for p in self._proxy_rotator._proxies]  # noqa: SLF001
+        # 同步提取 URL 列表（绕过 async build()）；list[str|None] 满足 Crawlee 参数不变性
+        proxy_urls: list[str | None] = list[str | None](
+            [p.url for p in self._proxy_rotator._proxies]  # noqa: SLF001
+        )
         return ProxyConfiguration(proxy_urls=proxy_urls)

@@ -232,10 +232,13 @@ class SiteUrlGenerator:
         """
         await self._ensure_browser()
 
+        ctx = self._context
+        assert ctx is not None
+
         for attempt in range(max_retries + 1):
             page = None
             try:
-                page = await self._context.new_page()
+                page = await ctx.new_page()
 
                 # 屏蔽非必要资源，降低带宽消耗和加载时间
                 async def _route_filter(route):

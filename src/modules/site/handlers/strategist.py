@@ -18,7 +18,11 @@
 from __future__ import annotations
 
 import re
-from typing import Callable, List, TYPE_CHECKING
+from typing import Callable, List, TYPE_CHECKING, cast
+
+from crawlee import Glob
+from crawlee._types import EnqueueStrategy
+from crawlee.crawlers import BeautifulSoupCrawlingContext, PlaywrightCrawlingContext
 
 from src.utils.logger import get_logger
 
@@ -68,13 +72,16 @@ class Strategist:
     # 公开接口（职责链节点入口）
     # ------------------------------------------------------------------
 
-    async def enqueue_next_pages(self, context: object) -> None:
+    async def enqueue_next_pages(
+        self,
+        context: PlaywrightCrawlingContext | BeautifulSoupCrawlingContext,
+    ) -> None:
         """
         翻页与路由扩散（职责链末节点入口）。
 
         执行流程：
-        1. 检查 is_running() 和 context 是否支持 enqueue_links。
-        2. 若 context.page 存在，先等待 DOM 稳定（wait_for_load_state，超时 2s 静默跳过）。
+        1. 检查 is_running()。
+        2. 若为 Playwright 上下文且 context.page 存在，先等待 DOM 稳定（wait_for_load_state，超时 2s 静默跳过）。
         3. 根据 crawl_strategy 决定是否调用 enqueue_links。
         4. 捕获 'Execution context was destroyed' 错误，降级为 INFO 日志，不污染错误报告。
 
@@ -84,17 +91,15 @@ class Strategist:
         if not self._is_running():
             return
 
-        if not hasattr(context, "enqueue_links"):
-            return
-
         if not self._should_enqueue():
             return
 
-        # 等待页面 DOM 稳定，防止在页面还在加载时就开始提取链接
-        page = getattr(context, "page", None)
-        if page is not None:
+        # 等待页面 DOM 稳定，防止在页面还在加载时就开始提取链接（仅 Playwright 管线）
+        if isinstance(context, PlaywrightCrawlingContext):
+            page = context.page
             try:
                 import asyncio
+
                 await asyncio.wait_for(
                     page.wait_for_load_state("domcontentloaded"),
                     timeout=2.0,
@@ -104,9 +109,16 @@ class Strategist:
                 pass
 
         try:
-            await context.enqueue_links(  # type: ignore[union-attr]
-                strategy=self._settings.engine_settings.link_strategy,
-                exclude=self._exclude_patterns,
+            strategy = cast(
+                EnqueueStrategy,
+                self._settings.engine_settings.link_strategy,
+            )
+            exclude_kw: list[re.Pattern[str] | Glob] = [
+                cast(re.Pattern[str] | Glob, p) for p in self._exclude_patterns
+            ]
+            await context.enqueue_links(
+                strategy=strategy,
+                exclude=exclude_kw,
             )
         except Exception as exc:
             exc_str = str(exc)

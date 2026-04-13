@@ -30,15 +30,16 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Callable, List, Optional, TYPE_CHECKING
+from typing import Callable, List, Optional, TYPE_CHECKING, Union
 from urllib.parse import urlparse
 
 from crawlee import Request  # 实例化 Request 对象（非 TYPE_CHECKING，运行时需要）
+from crawlee.crawlers import BeautifulSoupCrawlingContext, PlaywrightCrawlingContext
 
 from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
-    from playwright.async_api import Page
+    from playwright.async_api import Locator, Page
     from src.modules.site.audit.error_registry import ErrorRegistry
     from src.engine.anti_bot.behavior.base import AbstractBehaviorSimulator
 
@@ -157,7 +158,10 @@ class Interactor:
                 # 弹窗不存在或超时：静默继续尝试下一个选择器
                 continue
 
-    async def extract_raw_links(self, context: object) -> List[str]:
+    async def extract_raw_links(
+        self,
+        context: Union[PlaywrightCrawlingContext, BeautifulSoupCrawlingContext],
+    ) -> List[str]:
         """
         从当前上下文中提取页面内所有 a[href] 原始链接。
         双模式兼容：
@@ -171,18 +175,18 @@ class Interactor:
             原始 href 字符串列表（可能含相对路径、空字符串，由 parser 后续清洗）。
         """
         # BeautifulSoup 模式（静态解析，无需 Playwright DOM 查询）
-        soup = getattr(context, "soup", None)
-        if soup is not None:
-            return [a["href"] for a in soup.find_all("a", href=True)]
+        if isinstance(context, BeautifulSoupCrawlingContext):
+            soup = context.soup
+            hrefs_bs: List[str] = []
+            for a in soup.find_all("a", href=True):
+                h = a.get("href")
+                if h is not None:
+                    hrefs_bs.append(str(h))
+            return hrefs_bs
 
         # Playwright 模式（动态渲染，通过 JS evaluate 批量提取）
-        page = getattr(context, "page", None)
-        if page is None:
-            return []
-
-        current_url: str = getattr(
-            getattr(context, "request", None), "url", "Unknown"
-        )
+        page = context.page
+        current_url: str = context.request.url
         from src.modules.site.audit.error_registry import error_interceptor
 
         async with error_interceptor(page, current_url):
@@ -192,7 +196,10 @@ class Interactor:
             )
             return [h for h in hrefs if h]
 
-    async def trigger_download_buttons(self, context: object) -> List[object]:
+    async def trigger_download_buttons(
+        self,
+        context: PlaywrightCrawlingContext,
+    ) -> List[Request]:
         """
         侦察兵模式：扫描页面上疑似下载按钮，将其封装为 NEED_CLICK 标签的 Crawlee Request
         并推入请求队列，不直接执行点击（交由 ActionHandler 在独立沙箱处理）。
@@ -212,7 +219,7 @@ class Interactor:
         Returns:
             实际派发的 Request 对象列表（主要用于日志/测试，通常可忽略返回值）。
         """
-        if not self.is_running() or not hasattr(context, 'page') or not context.page:
+        if not self.is_running():
             return []
 
         current_url = context.request.url
@@ -221,12 +228,12 @@ class Interactor:
         # context.session 来自 BasicCrawlingContext，类型 Session | None。
         # session_mode="persistent" 时只有一个 Session，此逻辑是 no-op。
         # session_mode="pool" 时此值决定空降任务是否能复用同一 BrowserContext。
-        current_session: object = getattr(context, 'session', None)
+        current_session = context.session
         current_session_id: Optional[str] = (
             current_session.id if current_session is not None else None
         )
 
-        button_locators = context.page.locator(', '.join(self.DOWNLOAD_BUTTON_SELECTORS))
+        button_locators = context.page.locator(", ".join(self.DOWNLOAD_BUTTON_SELECTORS))
         button_count = await button_locators.count()
 
         if button_count == 0:
@@ -270,7 +277,7 @@ class Interactor:
     # 私有工具
     # ------------------------------------------------------------------
 
-    async def _is_wrapped_by_real_link(self, btn: object) -> bool:
+    async def _is_wrapped_by_real_link(self, btn: "Locator") -> bool:
         """
         通过 DOM 树逆向溯源，判断按钮元素是否被真实静态 a[href] 包裹。
         如果被包裹则说明链接提取阶段已能处理，无需交互点击。

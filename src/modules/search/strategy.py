@@ -499,7 +499,9 @@ class SearchCrawlStrategy(BaseCrawlStrategy):
 
         try:
             await self._ensure_playwright()
-            page = await self._context.new_page()
+            ctx = self._context
+            assert ctx is not None
+            page = await ctx.new_page()
 
             try:
                 for page_idx in range(_SERP_MAX_PAGES):

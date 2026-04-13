@@ -153,6 +153,11 @@ class MasterDispatcher:
         """供 UI 心跳（bridge.get_status）查询是否有任务占用调度器。"""
         return self._running
 
+    def is_canary_run_active(self) -> bool:
+        """当前调度器上的策略是否为金丝雀合成任务（用于看板 system_state=running）。"""
+        strat = self._strategy
+        return bool(getattr(strat, "is_canary_strategy", False))
+
     # ------------------------------------------------------------------
     # 公开：反爬工具箱注入（可选，运行前配置）
     # ------------------------------------------------------------------
@@ -201,7 +206,17 @@ class MasterDispatcher:
         mode = settings.task_info.mode
 
         if mode == "site":
+            if settings.task_info.is_canary:
+                from src.modules.canary.strategy import CanaryMockStrategy
+
+                return CanaryMockStrategy(
+                    settings,
+                    self._state_manager,
+                    proxy_rotator=self._proxy_rotator,
+                    challenge_solver=self._challenge_solver,
+                )
             from src.modules.site.strategy import SiteCrawlStrategy
+
             return SiteCrawlStrategy(
                 settings,
                 self._state_manager,
@@ -239,8 +254,14 @@ class MasterDispatcher:
             ValueError: 遇到未知模式时抛出。
         """
         from src.app.runner import SiteRunner, SearchRunner
+        from src.modules.site.strategy import SiteCrawlStrategy
+        from src.modules.search.strategy import SearchCrawlStrategy
+
+        if self._strategy is None:
+            raise RuntimeError("策略未初始化：_create_runner 仅在 _select_strategy 成功之后调用")
 
         if mode == "site":
+            assert isinstance(self._strategy, SiteCrawlStrategy)
             return SiteRunner(
                 strategy=self._strategy,
                 state_manager=self._state_manager,
@@ -249,6 +270,7 @@ class MasterDispatcher:
             )
 
         if mode == "search":
+            assert isinstance(self._strategy, SearchCrawlStrategy)
             return SearchRunner(
                 strategy=self._strategy,
                 state_manager=self._state_manager,

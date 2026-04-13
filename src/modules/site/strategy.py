@@ -17,19 +17,28 @@ from __future__ import annotations
 import asyncio
 import datetime
 import os
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from crawlee.crawlers import BeautifulSoupCrawlingContext, PlaywrightCrawlingContext
+
 from src.modules.base_strategy import BaseCrawlStrategy
+from src.modules.site.audit.workspace_provider import AuditWorkspaceProvider
+from src.modules.site.handlers.action import ActionHandler
+from src.modules.site.handlers.action_downloader import ActionDownloader
+from src.modules.site.handlers.downloader import Downloader
+from src.modules.site.handlers.interactor import Interactor
+from src.modules.site.handlers.net_sniffer import NetSniffer
+from src.modules.site.handlers.strategist import Strategist
+from src.modules.site.audit.error_registry import ErrorRegistry
+from src.modules.site.generator import SiteUrlGenerator
+from src.modules.site.parser import SiteDataParser
 from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from src.config.settings import PrismSettings
     from src.engine.anti_bot.challenge_solver import ChallengeSolver
     from src.engine.anti_bot.proxy_rotator import ProxyRotator
-    from src.modules.site.generator import SiteUrlGenerator
-    from src.modules.site.parser import SiteDataParser
-    from src.modules.site.audit.audit_center import SiteAuditCenter
-    from src.modules.site.audit.error_registry import ErrorRegistry
     from src.modules.site.handlers.net_sniffer import NetSniffer
     from src.modules.site.handlers.downloader import Downloader
     from src.modules.site.handlers.interactor import Interactor
@@ -37,7 +46,7 @@ if TYPE_CHECKING:
     from src.modules.site.handlers.action import ActionHandler
     from src.modules.site.handlers.action_downloader import ActionDownloader
     from src.engine.crawlee_engine import CrawleeEngineFactory
-    from src.engine.state_manager import CrawlerStateManager
+    from src.engine.state_manager import CrawlerState, CrawlerStateManager
 
 _log = get_logger(__name__)
 
@@ -47,6 +56,25 @@ _VALID_SITE_STRATEGIES = frozenset({"direct", "full", "sitemap"})
 # graceful shutdown 轮询间隔（秒）和最大等待时间（秒）
 _DRAIN_POLL_INTERVAL = 1.0
 _DRAIN_MAX_WAIT_SECS = 120
+
+
+@dataclass(frozen=True, slots=True)
+class SitePipeline:
+    """
+    完整站点任务在 _assemble_pipeline 结束后的非可选快照；
+    金丝雀等轻量子类不赋值 _pipeline（父类 handler 由子类覆盖，不访问本快照）。
+    """
+
+    audit_center: AuditWorkspaceProvider
+    error_registry: ErrorRegistry
+    generator: SiteUrlGenerator
+    parser: SiteDataParser
+    net_sniffer: NetSniffer
+    downloader: Downloader
+    interactor: Interactor
+    strategist: Strategist
+    action_handler: ActionHandler
+    action_downloader: ActionDownloader
 
 
 class SiteCrawlStrategy(BaseCrawlStrategy):
@@ -82,16 +110,17 @@ class SiteCrawlStrategy(BaseCrawlStrategy):
         self._challenge_solver = challenge_solver
 
         # 子组件引用（由 _assemble_pipeline 延迟初始化）
-        self._audit_center: Optional["SiteAuditCenter"] = None
-        self._error_registry: Optional["ErrorRegistry"] = None
-        self._generator: Optional["SiteUrlGenerator"] = None
-        self._parser: Optional["SiteDataParser"] = None
-        self._net_sniffer: Optional["NetSniffer"] = None
-        self._downloader: Optional["Downloader"] = None
-        self._interactor: Optional["Interactor"] = None
-        self._strategist: Optional["Strategist"] = None
-        self._action_handler: Optional["ActionHandler"] = None
-        self._action_downloader: Optional["ActionDownloader"] = None
+        self._audit_center: Optional[AuditWorkspaceProvider] = None
+        self._error_registry: Optional[ErrorRegistry] = None
+        self._generator: Optional[SiteUrlGenerator] = None
+        self._parser: Optional[SiteDataParser] = None
+        self._net_sniffer: Optional[NetSniffer] = None
+        self._downloader: Optional[Downloader] = None
+        self._interactor: Optional[Interactor] = None
+        self._strategist: Optional[Strategist] = None
+        self._action_handler: Optional[ActionHandler] = None
+        self._action_downloader: Optional[ActionDownloader] = None
+        self._pipeline: Optional[SitePipeline] = None
 
         # 目标扩展名缓存（_assemble_pipeline 中设置）
         self._target_ext: str = ".pdf"
@@ -137,9 +166,20 @@ class SiteCrawlStrategy(BaseCrawlStrategy):
 
         return True
 
+    async def _resolve_seed_urls(self) -> list[str]:
+        """
+        解析本站任务种子 URL 列表。
+        默认走 SiteUrlGenerator；金丝雀等子类可覆盖为直接返回 target_urls。
+        """
+        assert self._generator is not None
+        return await self._generator.generate(
+            self.settings.strategy_settings,
+            max_targets=self.settings.task_info.max_pdf_count or 5000,
+        )
+
     async def _fsm_transition(
         self,
-        new_state: "CrawlerState",
+        new_state: CrawlerState,
         reason: str,
         *,
         swallow: bool = False,
@@ -188,12 +228,11 @@ class SiteCrawlStrategy(BaseCrawlStrategy):
 
         # ── Step 2: 装配管线 ─────────────────────────────────────────
         self._assemble_pipeline()
+        assert self._audit_center is not None
+        assert self._error_registry is not None
 
-        # ── Step 3: 生成种子 URL ─────────────────────────────────────
-        seeds = await self._generator.generate(
-            self.settings.strategy_settings,
-            max_targets=self.settings.task_info.max_pdf_count or 5000,
-        )
+        # ── Step 3: 生成种子 URL（子类可覆盖 _resolve_seed_urls，如金丝雀直出靶场列表） ─
+        seeds = await self._resolve_seed_urls()
         if not seeds:
             _log.error("[SiteCrawlStrategy] 种子 URL 列表为空，任务中止")
             await self._fsm_transition(
@@ -355,16 +394,7 @@ class SiteCrawlStrategy(BaseCrawlStrategy):
         """
         from src.config.settings import get_app_config
         from src.modules.site.audit.audit_center import SiteAuditCenter
-        from src.modules.site.audit.error_registry import ErrorRegistry
         from src.modules.site.audit.realtime_file_exporter import RealtimeFileExporter
-        from src.modules.site.generator import SiteUrlGenerator
-        from src.modules.site.parser import SiteDataParser
-        from src.modules.site.handlers.net_sniffer import NetSniffer
-        from src.modules.site.handlers.downloader import Downloader
-        from src.modules.site.handlers.interactor import Interactor
-        from src.modules.site.handlers.strategist import Strategist
-        from src.modules.site.handlers.action import ActionHandler
-        from src.modules.site.handlers.action_downloader import ActionDownloader
 
         app_cfg = get_app_config()
         strat = self.settings.strategy_settings
@@ -382,7 +412,7 @@ class SiteCrawlStrategy(BaseCrawlStrategy):
                 strategy_prefix=strat.crawl_strategy,
             )
             _log.info("[SiteCrawlStrategy] enable_realtime_jsonl_export=True，已启用 JSONL/TXT 实时落盘")
-        self._audit_center = SiteAuditCenter(
+        audit_center = SiteAuditCenter(
             db_path=app_cfg.db_path,
             base_save_dir=task.save_directory,
             strategy_prefix=strat.crawl_strategy,
@@ -390,53 +420,77 @@ class SiteCrawlStrategy(BaseCrawlStrategy):
         )
 
         # ── 2. ErrorRegistry ─────────────────────────────────────────
-        self._error_registry = ErrorRegistry()
+        error_registry = ErrorRegistry()
 
         # ── 3. SiteUrlGenerator ──────────────────────────────────────
-        self._generator = SiteUrlGenerator()
+        generator = SiteUrlGenerator()
 
         # ── 4. SiteDataParser ────────────────────────────────────────
-        self._parser = SiteDataParser()
+        parser = SiteDataParser()
 
         # ── 5. Downloader ────────────────────────────────────────────
         max_conc = self.settings.get_effective_max_concurrency()
-        self._downloader = Downloader(
+        downloader = Downloader(
             settings=self.settings,
-            audit_center=self._audit_center,
+            audit_center=audit_center,
             is_running=self.is_running,
             max_concurrency=max_conc,
         )
 
         # ── 6. ActionDownloader（共享 Downloader 的 semaphore / lock） ─
-        self._action_downloader = ActionDownloader(
-            main_downloader=self._downloader,
+        action_downloader = ActionDownloader(
+            main_downloader=downloader,
         )
 
         # ── 7. Interactor ────────────────────────────────────────────
-        self._interactor = Interactor(
+        interactor = Interactor(
             is_running=self.is_running,
-            record_interaction=self._audit_center.record_interaction,
+            record_interaction=audit_center.record_interaction,
         )
 
         # ── 8. NetSniffer ────────────────────────────────────────────
-        self._net_sniffer = NetSniffer(
-            parser=self._parser,
+        net_sniffer = NetSniffer(
+            parser=parser,
             target_ext=self._target_ext,
             is_running=self.is_running,
         )
 
         # ── 9. Strategist ────────────────────────────────────────────
-        self._strategist = Strategist(
+        strategist = Strategist(
             settings=self.settings,
             is_running=self.is_running,
         )
 
         # ── 10. ActionHandler ─────────────────────────────────────────
-        self._action_handler = ActionHandler(
-            interactor=self._interactor,
-            action_downloader=self._action_downloader,
+        action_handler = ActionHandler(
+            interactor=interactor,
+            action_downloader=action_downloader,
             is_running=self.is_running,
-            record_interaction=self._audit_center.record_interaction,
+            record_interaction=audit_center.record_interaction,
+        )
+
+        self._audit_center = audit_center
+        self._error_registry = error_registry
+        self._generator = generator
+        self._parser = parser
+        self._downloader = downloader
+        self._action_downloader = action_downloader
+        self._interactor = interactor
+        self._net_sniffer = net_sniffer
+        self._strategist = strategist
+        self._action_handler = action_handler
+
+        self._pipeline = SitePipeline(
+            audit_center=audit_center,
+            error_registry=error_registry,
+            generator=generator,
+            parser=parser,
+            net_sniffer=net_sniffer,
+            downloader=downloader,
+            interactor=interactor,
+            strategist=strategist,
+            action_handler=action_handler,
+            action_downloader=action_downloader,
         )
 
         _log.info("[SiteCrawlStrategy] 管线装配完成")
@@ -449,8 +503,10 @@ class SiteCrawlStrategy(BaseCrawlStrategy):
         Args:
             crawler: 由 CrawleeEngineFactory 创建的 Crawlee 爬虫实例。
         """
+        pl = self._pipeline
+        assert pl is not None
         crawler.router.default_handler(self._default_page_handler)
-        crawler.router.handler("NEED_CLICK")(self._action_handler.handle_action)
+        crawler.router.handler("NEED_CLICK")(pl.action_handler.handle_action)
 
         # 失败请求处理（Crawlee Python 通过 failed_request_handler 属性注入）
         if hasattr(crawler, "failed_request_handler"):
@@ -464,13 +520,19 @@ class SiteCrawlStrategy(BaseCrawlStrategy):
     # 私有：Crawlee 请求处理器
     # ------------------------------------------------------------------
 
-    async def _default_page_handler(self, context: Any) -> None:
+    async def _default_page_handler(
+        self,
+        context: PlaywrightCrawlingContext | BeautifulSoupCrawlingContext,
+    ) -> None:
         """
         默认页面处理器：串联 interactor → net_sniffer → 链接提取 →
         下载调度 → trigger_download_buttons → strategist 的完整管线。
         """
         if not self._is_running:
             return
+
+        pl = self._pipeline
+        assert pl is not None
 
         page = getattr(context, "page", None)
         request = getattr(context, "request", None)
@@ -484,43 +546,45 @@ class SiteCrawlStrategy(BaseCrawlStrategy):
             await self._maybe_handle_challenge_page(page, status_code)
 
         # ── 记录页面访问成功 ─────────────────────────────────────────
-        domain = self._parser.get_core_domain(current_url)
-        await self._audit_center.record_page_success(domain, current_url, status_code)
+        domain = pl.parser.get_core_domain(current_url)
+        await pl.audit_center.record_page_success(domain, current_url, status_code)
 
         # ── 清理 Cookie 弹窗 ─────────────────────────────────────────
         if page is not None:
-            await self._interactor.clear_cookie_banners(page)
+            await pl.interactor.clear_cookie_banners(page)
 
         # ── 挂载网络嗅探探针 ─────────────────────────────────────────
-        workspace = self._audit_center._get_workspace(domain)  # noqa: SLF001
-        await self._net_sniffer.attach_probe(
+        workspace = pl.audit_center._get_workspace(domain)  # noqa: SLF001
+        await pl.net_sniffer.attach_probe(
             context=context,
             domain=domain,
             domain_workspace=workspace,
-            audit_center=self._audit_center,
-            downloader=self._downloader,
+            audit_center=pl.audit_center,
+            downloader=pl.downloader,
         )
 
-        # ── 提取页面链接并调度下载 ────────────────────────────────────
-        raw_hrefs = await self._interactor.extract_raw_links(context)
-        for href in raw_hrefs:
-            item = self._parser.parse_link(current_url, href, self._target_ext)
-            if item is None:
-                continue
-            file_url = item["file_url"]
-            file_domain = self._parser.get_core_domain(file_url)
-            file_workspace = self._audit_center._get_workspace(file_domain)  # noqa: SLF001
-            save_path = os.path.join(file_workspace, item["file_name"])
-            asyncio.create_task(
-                self._downloader.native_download_task(page, file_url, save_path, item),
-                name=f"dl-{file_url[-40:]}",
-            )
+        # ── 提取页面链接并调度下载（原生下载依赖 Playwright Page） ───────
+        raw_hrefs = await pl.interactor.extract_raw_links(context)
+        if page is not None:
+            for href in raw_hrefs:
+                item = pl.parser.parse_link(current_url, href, self._target_ext)
+                if item is None:
+                    continue
+                file_url = item["file_url"]
+                file_domain = pl.parser.get_core_domain(file_url)
+                file_workspace = pl.audit_center._get_workspace(file_domain)  # noqa: SLF001
+                save_path = os.path.join(file_workspace, item["file_name"])
+                asyncio.create_task(
+                    pl.downloader.native_download_task(page, file_url, save_path, item),
+                    name=f"dl-{file_url[-40:]}",
+                )
 
-        # ── 触发页面下载按钮扫描（enqueue NEED_CLICK requests） ──────
-        await self._interactor.trigger_download_buttons(context)
+        # ── 触发页面下载按钮扫描（仅 Playwright 管线；BS 静态模式无 Page） ─
+        if isinstance(context, PlaywrightCrawlingContext):
+            await pl.interactor.trigger_download_buttons(context)
 
         # ── 扩展爬取范围（enqueueing 下一批链接） ────────────────────
-        await self._strategist.enqueue_next_pages(context)
+        await pl.strategist.enqueue_next_pages(context)
 
     async def _maybe_handle_challenge_page(self, page: Any, status_code: int) -> None:
         """
@@ -549,7 +613,10 @@ class SiteCrawlStrategy(BaseCrawlStrategy):
         except Exception as exc:
             _log.debug(f"[SiteCrawlStrategy] ChallengeSolver.solve 异常（可忽略）: {exc!r}")
 
-    async def _failed_request_handler(self, context: Any) -> None:
+    async def _failed_request_handler(
+        self,
+        context: PlaywrightCrawlingContext | BeautifulSoupCrawlingContext,
+    ) -> None:
         """
         失败请求处理器：将请求失败记录写入 audit_center。
         若上下文中仍有 Page（部分失败路径会保留），尝试挑战恢复。
@@ -561,11 +628,12 @@ class SiteCrawlStrategy(BaseCrawlStrategy):
         request = getattr(context, "request", None)
         if request is None:
             return
+        pl = self._pipeline
+        assert pl is not None
         url: str = getattr(request, "url", "Unknown")
-        domain = self._parser.get_core_domain(url) if self._parser else "unknown_domain"
+        domain = pl.parser.get_core_domain(url)
         error_msg = getattr(request, "error_message", "请求失败") or "请求失败"
-        if self._audit_center:
-            await self._audit_center.record_page_failure(domain, url, 0, error_msg)
+        await pl.audit_center.record_page_failure(domain, url, 0, error_msg)
 
     # ------------------------------------------------------------------
     # 私有：DB 任务记录管理
@@ -611,7 +679,9 @@ class SiteCrawlStrategy(BaseCrawlStrategy):
             )
             if row is not None:
                 task_id = row["id"]
-                self._audit_center.set_task_id(task_id)
+                audit = self._audit_center
+                assert audit is not None
+                audit.set_task_id(task_id)
                 _log.info(f"[SiteCrawlStrategy] DB task_id={task_id} 已注入 audit_center")
             else:
                 _log.warning("[SiteCrawlStrategy] 无法获取 task_id，audit_center 将以降级模式运行")
@@ -656,6 +726,8 @@ class SiteCrawlStrategy(BaseCrawlStrategy):
         Returns:
             当前正在进行中的下载任务数量。
         """
+        if self._pipeline is not None:
+            return self._pipeline.downloader.files_active
         if self._downloader is None:
             return 0
         return self._downloader.files_active
@@ -668,14 +740,17 @@ class SiteCrawlStrategy(BaseCrawlStrategy):
         Returns:
             包含 files_found / files_downloaded / scraped_count / state 等字段的字典。
         """
-        dl_stats: Dict[str, int] = (
-            self._downloader.get_stats() if self._downloader else {}
-        )
-        scraped_count: int = (
-            self._audit_center.get_total_scraped_count()
-            if self._audit_center
-            else 0
-        )
+        if self._pipeline is not None:
+            pl = self._pipeline
+            dl_stats = pl.downloader.get_stats()
+            scraped_count = pl.audit_center.get_total_scraped_count()
+        else:
+            dl_stats = self._downloader.get_stats() if self._downloader else {}
+            scraped_count = (
+                self._audit_center.get_total_scraped_count()
+                if self._audit_center
+                else 0
+            )
         state_name: str = (
             self._state_manager.state.name
             if self._state_manager is not None
