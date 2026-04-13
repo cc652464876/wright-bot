@@ -67,6 +67,9 @@ yarn-error.log*
 # IDE / 系统
 .idea/
 .DS_Store
+
+# 网盘/同步软件临时目录（勿入库）
+.tmp.driveupload/
 Thumbs.db
 desktop.ini
 
